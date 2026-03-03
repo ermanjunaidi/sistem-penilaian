@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Plus, Edit, Trash2, Search, UserPlus } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, UserPlus, FileDown, Upload, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
+
+const KELAS_OPTIONS = ['7A', '7B', '8A', '8B', '9A', '9B'];
 
 export default function DataSiswa() {
   const { dataSiswa, setDataSiswa, generateId } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingSiswa, setEditingSiswa] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importData, setImportData] = useState([]);
   const [formData, setFormData] = useState({
     nis: '',
     nisn: '',
@@ -25,7 +30,8 @@ export default function DataSiswa() {
   const filteredSiswa = dataSiswa.filter(siswa => 
     siswa.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
     siswa.nisn.includes(searchTerm) ||
-    siswa.nis.includes(searchTerm)
+    siswa.nis.includes(searchTerm) ||
+    siswa.kelas.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const handleOpenModal = (siswa = null) => {
@@ -78,14 +84,227 @@ export default function DataSiswa() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // Export to Excel
+  const handleExport = () => {
+    const headers = [
+      'No', 'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir', 
+      'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua', 
+      'Telepon Orang Tua', 'Tanggal Masuk', 'Kelas'
+    ];
+
+    const worksheetData = [headers];
+
+    filteredSiswa.forEach((siswa, index) => {
+      worksheetData.push([
+        index + 1,
+        siswa.nis || '',
+        siswa.nisn || '',
+        siswa.nama || '',
+        siswa.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan',
+        siswa.tempatLahir || '',
+        siswa.tanggalLahir || '',
+        siswa.agama || '',
+        siswa.alamat || '',
+        siswa.namaOrtu || '',
+        siswa.teleponOrtu || '',
+        siswa.tanggalMasuk || '',
+        siswa.kelas || ''
+      ]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(worksheetData);
+    
+    // Set column widths
+    ws['!cols'] = [
+      { wch: 5 },  // No
+      { wch: 15 }, // NIS
+      { wch: 15 }, // NISN
+      { wch: 30 }, // Nama
+      { wch: 10 }, // L/P
+      { wch: 20 }, // Tempat Lahir
+      { wch: 15 }, // Tanggal Lahir
+      { wch: 10 }, // Agama
+      { wch: 30 }, // Alamat
+      { wch: 25 }, // Nama Ortu
+      { wch: 15 }, // Telepon
+      { wch: 15 }, // Tgl Masuk
+      { wch: 8 }   // Kelas
+    ];
+
+    // Add header styling
+    const range = XLSX.utils.decode_range(ws['!ref']);
+    
+    // Merge cells for title
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }];
+    
+    // Add title row
+    const titleRow = [['DATA SISWA - KURIKULUM MERDEKA']];
+    const ws2 = XLSX.utils.aoa_to_sheet(titleRow);
+    
+    // Combine title and data
+    const wb = XLSX.utils.book_new();
+    
+    // Create formatted worksheet
+    const finalData = [
+      ['DATA SISWA - KURIKULUM MERDEKA'],
+      [],
+      headers,
+      ...worksheetData.slice(1)
+    ];
+    
+    const finalWs = XLSX.utils.aoa_to_sheet(finalData);
+    finalWs['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }];
+    finalWs['!cols'] = ws['!cols'];
+    
+    XLSX.utils.book_append_sheet(wb, finalWs, 'Data Siswa');
+    XLSX.writeFile(wb, `Data_Siswa_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // Download Excel Template
+  const handleDownloadTemplate = () => {
+    const headers = [
+      'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir', 
+      'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua', 
+      'Telepon Orang Tua', 'Tanggal Masuk', 'Kelas'
+    ];
+
+    const exampleData = [
+      ['', '', 'Contoh Siswa 1', 'L', 'Jakarta', '2010-01-15', 'Islam', 'Jl. Contoh No. 1', 'Nama Orang Tua 1', '08123456789', '2024-07-01', '7A'],
+      ['', '', 'Contoh Siswa 2', 'P', 'Bandung', '2010-02-20', 'Kristen', 'Jl. Contoh No. 2', 'Nama Orang Tua 2', '08123456780', '2024-07-01', '7B'],
+      ['', '', 'Contoh Siswa 3', 'L', 'Surabaya', '2009-03-10', 'Islam', 'Jl. Contoh No. 3', 'Nama Orang Tua 3', '08123456781', '2023-07-01', '8A'],
+    ];
+
+    const wsData = [
+      ['TEMPLATE IMPORT DATA SISWA'],
+      ['KURIKULUM MERDEKA'],
+      [],
+      ['Keterangan:'],
+      ['- L/P: Isi dengan L (Laki-laki) atau P (Perempuan)'],
+      ['- Tanggal Lahir & Tanggal Masuk: Format YYYY-MM-DD (contoh: 2010-01-15)'],
+      ['- Agama: Islam, Kristen, Katolik, Hindu, Buddha, atau Konghucu'],
+      ['- Kelas: 7A, 7B, 8A, 8B, 9A, atau 9B'],
+      ['- Kolom yang wajib diisi: NISN, Nama Lengkap, L/P, Nama Orang Tua'],
+      [],
+      headers,
+      ...exampleData
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 11 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 11 } },
+      { s: { r: 4, c: 0 }, e: { r: 4, c: 11 } },
+      { s: { r: 5, c: 0 }, e: { r: 5, c: 11 } },
+      { s: { r: 6, c: 0 }, e: { r: 6, c: 11 } },
+      { s: { r: 7, c: 0 }, e: { r: 7, c: 11 } },
+      { s: { r: 8, c: 0 }, e: { r: 8, c: 11 } }
+    ];
+    ws['!cols'] = [
+      { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 8 },
+      { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 30 },
+      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 8 }
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Template');
+    XLSX.writeFile(wb, 'Template_Import_Data_Siswa.xlsx');
+  };
+
+  // Import from Excel
+  const handleFileImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        // Find the header row (skip title and info rows)
+        let headerRowIndex = 0;
+        for (let i = 0; i < Math.min(15, jsonData.length); i++) {
+          if (jsonData[i] && jsonData[i].includes('Nama Lengkap')) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+
+        const headers = jsonData[headerRowIndex];
+        const dataRows = jsonData.slice(headerRowIndex + 1);
+
+        const parsedData = dataRows
+          .filter(row => row[2] || row[1]) // Filter empty rows (check Nama or NISN)
+          .map((row, index) => ({
+            id: generateId(),
+            nis: row[0] || '',
+            nisn: row[1] || '',
+            nama: row[2] || '',
+            jenisKelamin: row[3] === 'P' || row[3] === 'Perempuan' ? 'P' : 'L',
+            tempatLahir: row[4] || '',
+            tanggalLahir: formatDate(row[5]),
+            agama: row[6] || '',
+            alamat: row[7] || '',
+            namaOrtu: row[8] || '',
+            teleponOrtu: row[9] || '',
+            tanggalMasuk: formatDate(row[10]),
+            kelas: row[11] || ''
+          }));
+
+        setImportData(parsedData);
+      } catch (error) {
+        alert('Error membaca file Excel: ' + error.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '';
+    if (date instanceof Date) {
+      return date.toISOString().split('T')[0];
+    }
+    return date;
+  };
+
+  const confirmImport = () => {
+    if (importData.length === 0) {
+      alert('Tidak ada data untuk diimport');
+      return;
+    }
+    
+    setDataSiswa(prev => [...prev, ...importData]);
+    setImportData([]);
+    setShowImportModal(false);
+    alert(`Berhasil mengimport ${importData.length} data siswa`);
+  };
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Data Siswa</h1>
-        <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-          <Plus size={18} />
-          Tambah Siswa
-        </button>
+        <div className="flex gap-1" style={{ flexWrap: 'wrap' }}>
+          <button className="btn btn-secondary" onClick={handleDownloadTemplate}>
+            <FileSpreadsheet size={18} />
+            Download Template
+          </button>
+          <button className="btn btn-secondary" onClick={handleExport}>
+            <FileDown size={18} />
+            Export Excel
+          </button>
+          <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
+            <Upload size={18} />
+            Import Excel
+          </button>
+          <button className="btn btn-primary" onClick={() => handleOpenModal()}>
+            <Plus size={18} />
+            Tambah Siswa
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -109,11 +328,11 @@ export default function DataSiswa() {
             <thead>
               <tr>
                 <th>No</th>
+                <th>Kelas</th>
                 <th>NISN</th>
                 <th>Nama Siswa</th>
                 <th>L/P</th>
                 <th>Tanggal Lahir</th>
-                <th>Kelas</th>
                 <th>Nama Orang Tua</th>
                 <th>Aksi</th>
               </tr>
@@ -124,7 +343,7 @@ export default function DataSiswa() {
                   <td colSpan="8" className="text-center">
                     <div className="empty-state">
                       <UserPlus size={48} className="empty-state-icon" />
-                      <p>Belum ada data siswa. Klik "Tambah Siswa" untuk menambahkan.</p>
+                      <p>Belum ada data siswa. Klik "Tambah Siswa" atau "Import Excel" untuk menambahkan.</p>
                     </div>
                   </td>
                 </tr>
@@ -132,11 +351,11 @@ export default function DataSiswa() {
                 filteredSiswa.map((siswa, index) => (
                   <tr key={siswa.id}>
                     <td>{index + 1}</td>
+                    <td><span className="badge badge-primary">{siswa.kelas || '-'}</span></td>
                     <td>{siswa.nisn}</td>
                     <td><strong>{siswa.nama}</strong></td>
                     <td>{siswa.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'}</td>
                     <td>{siswa.tanggalLahir}</td>
-                    <td>{siswa.kelas}</td>
                     <td>{siswa.namaOrtu}</td>
                     <td>
                       <div className="actions">
@@ -223,7 +442,12 @@ export default function DataSiswa() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Kelas</label>
-                    <input type="text" name="kelas" className="form-input" value={formData.kelas} onChange={handleChange} />
+                    <select name="kelas" className="form-select" value={formData.kelas} onChange={handleChange}>
+                      <option value="">Pilih Kelas</option>
+                      {KELAS_OPTIONS.map(kelas => (
+                        <option key={kelas} value={kelas}>{kelas}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               </div>
@@ -232,6 +456,82 @@ export default function DataSiswa() {
                 <button type="submit" className="btn btn-primary">{editingSiswa ? 'Update' : 'Simpan'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="modal-overlay" onClick={() => { setShowImportModal(false); setImportData([]); }}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Import Data Siswa dari Excel</h3>
+              <button className="btn btn-sm btn-secondary" onClick={() => { setShowImportModal(false); setImportData([]); }}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group mb-2">
+                <label className="form-label">Pilih File Excel</label>
+                <input 
+                  type="file" 
+                  accept=".xlsx,.xls" 
+                  onChange={handleFileImport}
+                  className="form-input"
+                />
+                <p style={{ fontSize: '0.8125rem', color: '#64748b', marginTop: '8px' }}>
+                  <FileSpreadsheet size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+                  Download template terlebih dahulu untuk format yang benar
+                </p>
+              </div>
+
+              {importData.length > 0 && (
+                <div>
+                  <h4 style={{ marginBottom: '12px', fontSize: '0.9375rem' }}>
+                    Preview Data ({importData.length} siswa):
+                  </h4>
+                  <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>No</th>
+                          <th>NISN</th>
+                          <th>Nama</th>
+                          <th>L/P</th>
+                          <th>Kelas</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importData.map((siswa, index) => (
+                          <tr key={index}>
+                            <td>{index + 1}</td>
+                            <td>{siswa.nisn}</td>
+                            <td>{siswa.nama}</td>
+                            <td>{siswa.jenisKelamin === 'L' ? 'L' : 'P'}</td>
+                            <td>{siswa.kelas}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => { setShowImportModal(false); setImportData([]); }}
+              >
+                Batal
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={confirmImport}
+                disabled={importData.length === 0}
+              >
+                <Upload size={16} />
+                Import {importData.length > 0 && `(${importData.length} Siswa)`}
+              </button>
+            </div>
           </div>
         </div>
       )}

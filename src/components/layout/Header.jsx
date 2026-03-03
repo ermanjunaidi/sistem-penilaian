@@ -15,13 +15,16 @@ export default function Header({ onToggleSidebar, isSidebarOpen }) {
       </button>
       
       <div className="header-content">
-        <h2>{currentPage}</h2>
+        <div className="header-title-wrapper">
+          <h2>Sistem Penilaian</h2>
+          <p className="header-subtitle">Kurikulum Merdeka</p>
+        </div>
         <div className="header-info">
           <span className="date">{new Date().toLocaleDateString('id-ID', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
+            weekday: 'short', 
+            day: 'numeric', 
+            month: 'short',
+            year: 'numeric'
           })}</span>
         </div>
       </div>

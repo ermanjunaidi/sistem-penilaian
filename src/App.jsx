@@ -1,6 +1,7 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import MainLayout from './components/layout/MainLayout';
+import Login from './pages/auth/Login';
 import InformasiUmum from './pages/informasi/InformasiUmum';
 import DataSekolah from './pages/informasi/DataSekolah';
 import DataSiswa from './pages/data/DataSiswa';
@@ -19,42 +20,113 @@ import Mutasi from './pages/laporan/Mutasi';
 import BukuInduk from './pages/laporan/BukuInduk';
 import './App.css';
 
+// Protected Route Component
+function ProtectedRoute({ children, allowedRoles }) {
+  const token = localStorage.getItem('token');
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const location = useLocation();
+
+  if (!token) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center' }}>
+        <h1>Akses Ditolak</h1>
+        <p>Anda tidak memiliki izin untuk mengakses halaman ini.</p>
+        <p>Role Anda: {user.role}</p>
+        <p>Role yang diperlukan: {allowedRoles.join(', ')}</p>
+      </div>
+    );
+  }
+
+  return children;
+}
+
+// App Routes Component
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      
+      <Route path="/" element={
+        <ProtectedRoute>
+          <MainLayout />
+        </ProtectedRoute>
+      }>
+        <Route index element={
+          <ProtectedRoute><InformasiUmum /></ProtectedRoute>
+        } />
+        
+        {/* Informasi - All roles */}
+        <Route path="data-sekolah" element={
+          <ProtectedRoute><DataSekolah /></ProtectedRoute>
+        } />
+        <Route path="data-siswa" element={
+          <ProtectedRoute allowedRoles={['admin', 'superadmin', 'wali_kelas']}><DataSiswa /></ProtectedRoute>
+        } />
+        <Route path="mata-pelajaran" element={
+          <ProtectedRoute><MataPelajaran /></ProtectedRoute>
+        } />
+        
+        {/* Kurikulum - All roles */}
+        <Route path="intrakurikuler" element={
+          <ProtectedRoute><Intrakurikuler /></ProtectedRoute>
+        } />
+        <Route path="ekstrakurikuler" element={
+          <ProtectedRoute><Ekstrakurikuler /></ProtectedRoute>
+        } />
+        
+        {/* Input - Guru+ */}
+        <Route path="tujuan-pembelajaran" element={
+          <ProtectedRoute allowedRoles={['guru', 'wali_kelas', 'admin', 'superadmin']}><TujuanPembelajaran /></ProtectedRoute>
+        } />
+        <Route path="lingkup-materi" element={
+          <ProtectedRoute allowedRoles={['guru', 'wali_kelas', 'admin', 'superadmin']}><LingkupMateri /></ProtectedRoute>
+        } />
+        <Route path="asesmen-formatif" element={
+          <ProtectedRoute allowedRoles={['guru', 'wali_kelas', 'admin', 'superadmin']}><AsesmenFormatif /></ProtectedRoute>
+        } />
+        <Route path="asesmen-sumatif" element={
+          <ProtectedRoute allowedRoles={['guru', 'wali_kelas', 'admin', 'superadmin']}><AsesmenSumatif /></ProtectedRoute>
+        } />
+        
+        {/* Penilaian - Guru+ */}
+        <Route path="penilaian-ekstrakurikuler" element={
+          <ProtectedRoute allowedRoles={['guru', 'wali_kelas', 'admin', 'superadmin']}><PenilaianEkstrakurikuler /></ProtectedRoute>
+        } />
+        <Route path="nilai-akhir" element={
+          <ProtectedRoute allowedRoles={['guru', 'wali_kelas', 'admin', 'superadmin']}><NilaiAkhir /></ProtectedRoute>
+        } />
+        
+        {/* Cetak - All roles */}
+        <Route path="sampul-rapor" element={
+          <ProtectedRoute><SampulRapor /></ProtectedRoute>
+        } />
+        <Route path="rapor" element={
+          <ProtectedRoute><Rapor /></ProtectedRoute>
+        } />
+        
+        {/* Laporan - Admin+ */}
+        <Route path="mutasi" element={
+          <ProtectedRoute allowedRoles={['admin', 'superadmin']}><Mutasi /></ProtectedRoute>
+        } />
+        <Route path="buku-induk" element={
+          <ProtectedRoute allowedRoles={['admin', 'superadmin', 'wali_kelas']}><BukuInduk /></ProtectedRoute>
+        } />
+      </Route>
+      
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
 function App() {
   return (
     <AppProvider>
       <Router>
-        <Routes>
-          <Route path="/" element={<MainLayout />}>
-            <Route index element={<InformasiUmum />} />
-            
-            {/* Informasi */}
-            <Route path="data-sekolah" element={<DataSekolah />} />
-            <Route path="data-siswa" element={<DataSiswa />} />
-            <Route path="mata-pelajaran" element={<MataPelajaran />} />
-            
-            {/* Kurikulum */}
-            <Route path="intrakurikuler" element={<Intrakurikuler />} />
-            <Route path="ekstrakurikuler" element={<Ekstrakurikuler />} />
-            
-            {/* Input */}
-            <Route path="tujuan-pembelajaran" element={<TujuanPembelajaran />} />
-            <Route path="lingkup-materi" element={<LingkupMateri />} />
-            <Route path="asesmen-formatif" element={<AsesmenFormatif />} />
-            <Route path="asesmen-sumatif" element={<AsesmenSumatif />} />
-            
-            {/* Penilaian */}
-            <Route path="penilaian-ekstrakurikuler" element={<PenilaianEkstrakurikuler />} />
-            <Route path="nilai-akhir" element={<NilaiAkhir />} />
-            
-            {/* Cetak */}
-            <Route path="sampul-rapor" element={<SampulRapor />} />
-            <Route path="rapor" element={<Rapor />} />
-            
-            {/* Laporan */}
-            <Route path="mutasi" element={<Mutasi />} />
-            <Route path="buku-induk" element={<BukuInduk />} />
-          </Route>
-        </Routes>
+        <AppRoutes />
       </Router>
     </AppProvider>
   );

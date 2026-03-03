@@ -1,8 +1,8 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   School, Users, BookOpen, ClipboardList, Target, 
   FileText, CheckSquare, Award, Printer, FileDown, 
-  UserPlus, Book, Home, Settings
+  UserPlus, Book, Home, Settings, LogOut, User
 } from 'lucide-react';
 
 const menuGroups = [
@@ -11,7 +11,7 @@ const menuGroups = [
     items: [
       { path: '/', label: 'Informasi Umum', icon: Home },
       { path: '/data-sekolah', label: 'Data Sekolah', icon: School },
-      { path: '/data-siswa', label: 'Data Siswa', icon: Users },
+      { path: '/data-siswa', label: 'Data Siswa', icon: Users, roles: ['admin', 'superadmin', 'wali_kelas'] },
       { path: '/mata-pelajaran', label: 'Mata Pelajaran', icon: BookOpen },
     ]
   },
@@ -25,17 +25,17 @@ const menuGroups = [
   {
     title: 'INPUT',
     items: [
-      { path: '/tujuan-pembelajaran', label: 'Tujuan Pembelajaran', icon: Target },
-      { path: '/lingkup-materi', label: 'Lingkup Materi', icon: FileText },
-      { path: '/asesmen-formatif', label: 'Asesmen Formatif', icon: CheckSquare },
-      { path: '/asesmen-sumatif', label: 'Asesmen Sumatif', icon: ClipboardList },
+      { path: '/tujuan-pembelajaran', label: 'Tujuan Pembelajaran', icon: Target, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/lingkup-materi', label: 'Lingkup Materi', icon: FileText, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/asesmen-formatif', label: 'Asesmen Formatif', icon: CheckSquare, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/asesmen-sumatif', label: 'Asesmen Sumatif', icon: ClipboardList, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
     ]
   },
   {
     title: 'PENILAIAN',
     items: [
-      { path: '/penilaian-ekstrakurikuler', label: 'Penilaian Ekstrakurikuler', icon: Award },
-      { path: '/nilai-akhir', label: 'Nilai Akhir', icon: Award },
+      { path: '/penilaian-ekstrakurikuler', label: 'Penilaian Ekstrakurikuler', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/nilai-akhir', label: 'Nilai Akhir', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
     ]
   },
   {
@@ -48,44 +48,123 @@ const menuGroups = [
   {
     title: 'LAPORAN',
     items: [
-      { path: '/mutasi', label: 'Mutasi', icon: UserPlus },
-      { path: '/buku-induk', label: 'Buku Induk', icon: Book },
+      { path: '/mutasi', label: 'Mutasi', icon: UserPlus, roles: ['admin', 'superadmin'] },
+      { path: '/buku-induk', label: 'Buku Induk', icon: Book, roles: ['admin', 'superadmin', 'wali_kelas'] },
     ]
   },
 ];
 
+const roleHierarchy = {
+  guru: 1,
+  wali_kelas: 2,
+  admin: 3,
+  superadmin: 4,
+};
+
+function canAccess(itemRoles, userRole) {
+  if (!itemRoles) return true;
+  const userLevel = roleHierarchy[userRole] || 0;
+  return itemRoles.some(role => {
+    const requiredLevel = roleHierarchy[role] || 0;
+    return userLevel >= requiredLevel;
+  });
+}
+
 export default function Sidebar() {
+  const navigate = useNavigate();
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/login');
+  };
+
+  const getRoleBadge = (role) => {
+    const colors = {
+      superadmin: { bg: '#dc2626', color: 'white' },
+      admin: { bg: '#2563eb', color: 'white' },
+      wali_kelas: { bg: '#10b981', color: 'white' },
+      guru: { bg: '#f59e0b', color: 'white' },
+    };
+    const color = colors[role] || { bg: '#64748b', color: 'white' };
+    
+    return (
+      <span style={{
+        background: color.bg,
+        color: color.color,
+        padding: '2px 8px',
+        borderRadius: '4px',
+        fontSize: '0.625rem',
+        fontWeight: 600,
+        textTransform: 'uppercase',
+      }}>
+        {role?.replace('_', ' ')}
+      </span>
+    );
+  };
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <h1>
-          <School size={24} />
-          Sistem Penilaian
-        </h1>
+        <div className="sidebar-header-top">
+          <h1>
+            <School size={24} />
+            Sistem Penilaian
+          </h1>
+          <button className="sidebar-close" aria-label="Close menu">
+            {/* X icon handled by CSS */}
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
         <p>Kurikulum Merdeka</p>
       </div>
       
-      <nav className="sidebar-nav">
-        {menuGroups.map((group, groupIndex) => (
-          <div key={groupIndex} className="nav-group">
-            <div className="nav-group-title">{group.title}</div>
-            {group.items.map((item) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  className={({ isActive }) => 
-                    `nav-item ${isActive ? 'active' : ''}`
-                  }
-                >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </NavLink>
-              );
-            })}
+      <div className="sidebar-user">
+        <div className="sidebar-user-info">
+          <div className="sidebar-user-avatar">
+            <User size={20} />
           </div>
-        ))}
+          <div className="sidebar-user-details">
+            <div className="sidebar-user-name">{user.nama || 'User'}</div>
+            <div className="sidebar-user-role">{getRoleBadge(user.role)}</div>
+          </div>
+        </div>
+        <button className="sidebar-logout" onClick={handleLogout} title="Logout">
+          <LogOut size={18} />
+        </button>
+      </div>
+      
+      <nav className="sidebar-nav">
+        {menuGroups.map((group, groupIndex) => {
+          const visibleItems = group.items.filter(item => canAccess(item.roles, user.role));
+          
+          if (visibleItems.length === 0) return null;
+          
+          return (
+            <div key={groupIndex} className="nav-group">
+              <div className="nav-group-title">{group.title}</div>
+              {visibleItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) => 
+                      `nav-item ${isActive ? 'active' : ''}`
+                    }
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
     </aside>
   );
