@@ -115,7 +115,7 @@ async function seed() {
     console.log('├─────────────────────────┼──────────────────────────┼──────────────┼───────────┤');
     console.log('│ superadmin@school.id    │ admin123                 │ superadmin   │ aktif     │');
     console.log('│ admin@school.id         │ admin123                 │ admin        │ aktif     │');
-    console.log('│ walikelas@school.id     │ guru123                  │ wali_kelas   │ aktif     │
+    console.log('│ walikelas@school.id     │ guru123                  │ wali_kelas   │ aktif     │');
     console.log('│ guru@school.id          │ guru123                  │ guru         │ aktif     │');
     console.log('└─────────────────────────┴──────────────────────────┴──────────────┴───────────┘');
     

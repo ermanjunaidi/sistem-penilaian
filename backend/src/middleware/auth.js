@@ -121,14 +121,14 @@ export const logActivity = (action, table) => {
   return async (req, res, next) => {
     // Store original json method
     const originalJson = res.json.bind(res);
-    
+
     // Override json method to capture response
-    res.json = (body) => {
+    res.json = async (body) => {
       // Log activity after response
       if (req.user) {
         try {
-          const { activityLogs } = require('../schema/index.js');
-          await db.insert(activityLogs).values({
+          const { activityLogs } = await import('../schema/index.js');
+          db.insert(activityLogs).values({
             userId: req.user.id,
             action,
             table,
@@ -136,6 +136,8 @@ export const logActivity = (action, table) => {
             newValue: JSON.stringify(body),
             ipAddress: req.ip || req.connection.remoteAddress,
             userAgent: req.headers['user-agent'],
+          }).then(() => {}).catch((error) => {
+            console.error('Error logging activity:', error);
           });
         } catch (error) {
           console.error('Error logging activity:', error);
@@ -143,7 +145,7 @@ export const logActivity = (action, table) => {
       }
       return originalJson(body);
     };
-    
+
     next();
   };
 };

@@ -70,10 +70,10 @@ function canAccess(itemRoles, userRole) {
   });
 }
 
-export default function Sidebar() {
+export default function Sidebar({ isSidebarOpen, onToggleSidebar }) {
   const navigate = useNavigate();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -110,17 +110,43 @@ export default function Sidebar() {
         <div className="sidebar-header-top">
           <h1>
             <School size={24} />
-            Sistem Penilaian
+            <span>Sistem Penilaian</span>
           </h1>
-          <button className="sidebar-close" aria-label="Close menu">
-            {/* X icon handled by CSS */}
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
+          <div className="sidebar-header-actions">
+            <button
+              className="sidebar-toggle"
+              onClick={onToggleSidebar}
+              aria-label={isSidebarOpen ? 'Close menu' : 'Open menu'}
+              title={isSidebarOpen ? 'Tutup sidebar' : 'Buka sidebar'}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                {isSidebarOpen ? (
+                  <>
+                    <line x1="15" y1="18" x2="9" y2="12"></line>
+                    <line x1="9" y1="18" x2="15" y2="12"></line>
+                  </>
+                ) : (
+                  <>
+                    <line x1="9" y1="6" x2="15" y2="12"></line>
+                    <line x1="9" y1="12" x2="15" y2="18"></line>
+                  </>
+                )}
+              </svg>
+            </button>
+            <button
+              className="sidebar-close"
+              onClick={onToggleSidebar}
+              aria-label="Close menu"
+              title="Tutup sidebar"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
         </div>
-        <p>Kurikulum Merdeka</p>
+        <p className="sidebar-subtitle">Kurikulum Merdeka</p>
       </div>
       
       <div className="sidebar-user">
@@ -135,6 +161,7 @@ export default function Sidebar() {
         </div>
         <button className="sidebar-logout" onClick={handleLogout} title="Logout">
           <LogOut size={18} />
+          <span>Logout</span>
         </button>
       </div>
       
@@ -153,7 +180,8 @@ export default function Sidebar() {
                   <NavLink
                     key={item.path}
                     to={item.path}
-                    className={({ isActive }) => 
+                    data-label={item.label}
+                    className={({ isActive }) =>
                       `nav-item ${isActive ? 'active' : ''}`
                     }
                   >
