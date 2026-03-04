@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, ClipboardList } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function AsesmenSumatif() {
   const { asesmenSumatif, setAsesmenSumatif, mataPelajaran, dataSiswa, generateId } = useApp();
@@ -79,6 +81,17 @@ export default function AsesmenSumatif() {
     return { text: 'Remedial', color: '#ef4444' };
   };
 
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(asesmenSumatif);
+
   return (
     <div>
       <div className="page-header">
@@ -122,11 +135,11 @@ export default function AsesmenSumatif() {
                   </td>
                 </tr>
               ) : (
-                asesmenSumatif.map((asesmen, index) => {
+                paginatedData.map((asesmen, index) => {
                   const status = getStatus(asesmen.nilai, asesmen.kkm);
                   return (
                     <tr key={asesmen.id}>
-                      <td>{index + 1}</td>
+                      <td>{startIndex + index + 1}</td>
                       <td>{asesmen.tanggal}</td>
                       <td><strong>{getMapelName(asesmen.mataPelajaranId)}</strong></td>
                       <td>{getSiswaName(asesmen.siswaId)}</td>
@@ -156,6 +169,14 @@ export default function AsesmenSumatif() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">

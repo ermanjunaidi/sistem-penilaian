@@ -18,6 +18,7 @@ import SampulRapor from './pages/cetak/SampulRapor';
 import Rapor from './pages/cetak/Rapor';
 import Mutasi from './pages/laporan/Mutasi';
 import BukuInduk from './pages/laporan/BukuInduk';
+import ManajemenUser from './pages/admin/ManajemenUser';
 import './App.css';
 
 // Protected Route Component
@@ -68,6 +69,9 @@ function AppRoutes() {
         } />
         <Route path="mata-pelajaran" element={
           <ProtectedRoute><MataPelajaran /></ProtectedRoute>
+        } />
+        <Route path="manajemen-user" element={
+          <ProtectedRoute allowedRoles={['superadmin']}><ManajemenUser /></ProtectedRoute>
         } />
         
         {/* Kurikulum - All roles */}

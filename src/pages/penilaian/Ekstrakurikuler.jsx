@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, Users, Award } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function Ekstrakurikuler() {
   const { ekstrakurikuler, setEkstrakurikuler, generateId } = useApp();
@@ -61,6 +63,17 @@ export default function Ekstrakurikuler() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(ekstrakurikuler);
+
   return (
     <div>
       <div className="page-header">
@@ -119,9 +132,9 @@ export default function Ekstrakurikuler() {
                   </td>
                 </tr>
               ) : (
-                ekstrakurikuler.map((ekstra, index) => (
+                paginatedData.map((ekstra, index) => (
                   <tr key={ekstra.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td>{ekstra.kode}</td>
                     <td><strong>{ekstra.nama}</strong></td>
                     <td>
@@ -148,6 +161,14 @@ export default function Ekstrakurikuler() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">

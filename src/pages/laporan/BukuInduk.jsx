@@ -1,38 +1,43 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Book, Search, FileDown, Plus, Upload, FileSpreadsheet } from 'lucide-react';
+import { Book, Search, FileDown, Plus, Upload, FileSpreadsheet, Edit, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 const KELAS_OPTIONS = ['7A', '7B', '8A', '8B', '9A', '9B'];
+const INITIAL_FORM_DATA = {
+  nis: '',
+  nisn: '',
+  nama: '',
+  tempatLahir: '',
+  tanggalLahir: '',
+  jenisKelamin: 'L',
+  agama: '',
+  alamat: '',
+  namaOrtu: '',
+  teleponOrtu: '',
+  tanggalMasuk: '',
+  kelasMasuk: '',
+  kelas: '',
+  status: 'Aktif',
+  tanggalKeluar: '',
+  alasanKeluar: '',
+  keterangan: ''
+};
 
 export default function BukuInduk() {
-  const { bukuInduk, setBukuInduk, dataSiswa, setDataSiswa, generateId } = useApp();
+  const { dataSiswa, setDataSiswa, generateId } = useApp();
   const [showModal, setShowModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState({
-    nisn: '',
-    nama: '',
-    tempatLahir: '',
-    tanggalLahir: '',
-    jenisKelamin: 'L',
-    agama: '',
-    alamat: '',
-    namaOrtu: '',
-    teleponOrtu: '',
-    tanggalMasuk: '',
-    kelasMasuk: '',
-    kelas: '',
-    status: 'Aktif',
-    tanggalKeluar: '',
-    alasanKeluar: '',
-    keterangan: ''
-  });
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA);
 
   // Sync with dataSiswa - Buku Induk is the master record
   const syncedBukuInduk = useMemo(() => {
     return dataSiswa.map(siswa => ({
       ...siswa,
-      status: siswa.statusMutasi || 'Aktif'
+      status: siswa.statusMutasi || siswa.status || 'Aktif'
     }));
   }, [dataSiswa]);
 
@@ -43,36 +48,64 @@ export default function BukuInduk() {
     item.kelas?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleOpenModal = () => {
-    setFormData({
-      nisn: '',
-      nama: '',
-      tempatLahir: '',
-      tanggalLahir: '',
-      jenisKelamin: 'L',
-      agama: '',
-      alamat: '',
-      namaOrtu: '',
-      teleponOrtu: '',
-      tanggalMasuk: '',
-      kelasMasuk: '',
-      kelas: '',
-      status: 'Aktif',
-      tanggalKeluar: '',
-      alasanKeluar: '',
-      keterangan: ''
-    });
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(filteredData);
+
+  const handleOpenModal = (item = null) => {
+    if (item) {
+      setEditingItem(item);
+      setFormData({
+        nis: item.nis || '',
+        nisn: item.nisn || '',
+        nama: item.nama || '',
+        tempatLahir: item.tempatLahir || '',
+        tanggalLahir: item.tanggalLahir || '',
+        jenisKelamin: item.jenisKelamin || 'L',
+        agama: item.agama || '',
+        alamat: item.alamat || '',
+        namaOrtu: item.namaOrtu || '',
+        teleponOrtu: item.teleponOrtu || '',
+        tanggalMasuk: item.tanggalMasuk || '',
+        kelasMasuk: item.kelasMasuk || '',
+        kelas: item.kelas || '',
+        status: item.statusMutasi || item.status || 'Aktif',
+        tanggalKeluar: item.tanggalKeluar || '',
+        alasanKeluar: item.alasanKeluar || '',
+        keterangan: item.keterangan || ''
+      });
+    } else {
+      setEditingItem(null);
+      setFormData(INITIAL_FORM_DATA);
+    }
     setShowModal(true);
   };
 
   const handleCloseModal = () => {
     setShowModal(false);
+    setEditingItem(null);
+    setFormData(INITIAL_FORM_DATA);
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const newEntry = { ...formData, id: generateId() };
-    setDataSiswa(prev => [...prev, newEntry]);
+    if (editingItem) {
+      setDataSiswa((prev) =>
+        prev.map((item) =>
+          item.id === editingItem.id ? { ...item, ...formData } : item
+        )
+      );
+    } else {
+      const newEntry = { ...formData, id: generateId() };
+      setDataSiswa(prev => [...prev, newEntry]);
+    }
     handleCloseModal();
   };
 
@@ -182,6 +215,16 @@ export default function BukuInduk() {
   // Import from Excel
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState([]);
+  const {
+    currentPage: importCurrentPage,
+    setCurrentPage: setImportCurrentPage,
+    itemsPerPage: importItemsPerPage,
+    setItemsPerPage: setImportItemsPerPage,
+    totalItems: importTotalItems,
+    totalPages: importTotalPages,
+    startIndex: importStartIndex,
+    paginatedData: paginatedImportData,
+  } = usePagination(importData, 5);
 
   const handleFileImport = (e) => {
     const file = e.target.files[0];
@@ -252,6 +295,11 @@ export default function BukuInduk() {
     alert(`Berhasil mengimport ${importData.length} data siswa`);
   };
 
+  const handleDelete = (id) => {
+    if (!window.confirm('Hapus data siswa ini dari Buku Induk?')) return;
+    setDataSiswa((prev) => prev.filter((item) => item.id !== id));
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -308,7 +356,10 @@ export default function BukuInduk() {
               className="form-input"
               placeholder="Cari siswa..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               style={{ width: 250 }}
             />
           </div>
@@ -328,12 +379,13 @@ export default function BukuInduk() {
                 <th>Alamat</th>
                 <th>Tgl Masuk</th>
                 <th>Status</th>
+                <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="text-center">
+                  <td colSpan="11" className="text-center">
                     <div className="empty-state">
                       <Book size={48} className="empty-state-icon" />
                       <p>Belum ada data dalam buku induk.</p>
@@ -341,9 +393,9 @@ export default function BukuInduk() {
                   </td>
                 </tr>
               ) : (
-                filteredData.map((item, index) => (
+                paginatedData.map((item, index) => (
                   <tr key={item.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td>{item.nisn}</td>
                     <td><strong>{item.nama}</strong></td>
                     <td>{item.jenisKelamin === 'L' ? 'L' : 'P'}</td>
@@ -362,12 +414,30 @@ export default function BukuInduk() {
                         {item.status}
                       </span>
                     </td>
+                    <td>
+                      <div className="actions">
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(item)}>
+                          <Edit size={16} />
+                        </button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">
@@ -399,7 +469,7 @@ export default function BukuInduk() {
         <div className="modal-overlay" onClick={handleCloseModal}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Tambah Siswa ke Buku Induk</h3>
+              <h3 className="modal-title">{editingItem ? 'Edit Siswa Buku Induk' : 'Tambah Siswa ke Buku Induk'}</h3>
               <button className="btn btn-sm btn-secondary" onClick={handleCloseModal}>×</button>
             </div>
             <form onSubmit={handleSubmit}>
@@ -486,7 +556,7 @@ export default function BukuInduk() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">Simpan</button>
+                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
               </div>
             </form>
           </div>
@@ -532,9 +602,9 @@ export default function BukuInduk() {
                         </tr>
                       </thead>
                       <tbody>
-                        {importData.map((siswa, index) => (
+                        {paginatedImportData.map((siswa, index) => (
                           <tr key={index}>
-                            <td>{index + 1}</td>
+                            <td>{importStartIndex + index + 1}</td>
                             <td>{siswa.nisn}</td>
                             <td>{siswa.nama}</td>
                             <td>{siswa.jenisKelamin === 'L' ? 'L' : 'P'}</td>
@@ -544,6 +614,14 @@ export default function BukuInduk() {
                       </tbody>
                     </table>
                   </div>
+                  <Pagination
+                    totalItems={importTotalItems}
+                    currentPage={importCurrentPage}
+                    totalPages={importTotalPages}
+                    itemsPerPage={importItemsPerPage}
+                    onPageChange={setImportCurrentPage}
+                    onItemsPerPageChange={setImportItemsPerPage}
+                  />
                 </div>
               )}
             </div>

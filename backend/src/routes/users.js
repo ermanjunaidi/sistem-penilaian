@@ -6,6 +6,7 @@ import { eq, desc } from 'drizzle-orm';
 import { authorize, authorizeHierarchy, logActivity } from '../middleware/auth.js';
 
 const router = express.Router();
+const creatableRoles = ['admin', 'wali_kelas', 'guru'];
 
 // Get all users (Admin+)
 router.get('/', authorizeHierarchy('admin'), async (req, res) => {
@@ -89,17 +90,31 @@ router.get('/:id', authorizeHierarchy('admin'), async (req, res) => {
 router.post('/', authorize('superadmin'), logActivity('CREATE', 'users'), async (req, res) => {
   try {
     const { email, password, nama, nip, role, telepon, alamat, tanggalLahir, tempatLahir } = req.body;
+    const normalizedEmail = email?.trim();
+    const normalizedNama = nama?.trim();
+    const normalizedNip = nip?.trim() ? nip.trim() : null;
+    const normalizedTelepon = telepon?.trim() ? telepon.trim() : null;
+    const normalizedAlamat = alamat?.trim() ? alamat.trim() : null;
+    const normalizedTempatLahir = tempatLahir?.trim() ? tempatLahir.trim() : null;
 
-    if (!email || !password || !nama) {
+    if (!normalizedEmail || !password || !normalizedNama) {
       return res.status(400).json({
         success: false,
         message: 'Email, password, dan nama wajib diisi.',
       });
     }
 
+    const normalizedRole = role || 'guru';
+    if (!creatableRoles.includes(normalizedRole)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Role tidak valid. Role yang bisa dibuat: admin, wali_kelas, guru.',
+      });
+    }
+
     // Check if email exists
     const existingUser = await db.query.users.findFirst({
-      where: eq(users.email, email),
+      where: eq(users.email, normalizedEmail),
     });
 
     if (existingUser) {
@@ -109,18 +124,31 @@ router.post('/', authorize('superadmin'), logActivity('CREATE', 'users'), async 
       });
     }
 
+    if (normalizedNip) {
+      const existingNip = await db.query.users.findFirst({
+        where: eq(users.nip, normalizedNip),
+      });
+
+      if (existingNip) {
+        return res.status(400).json({
+          success: false,
+          message: 'NIP sudah terdaftar.',
+        });
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = await db.insert(users).values({
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
-      nama,
-      nip,
-      role: role || 'guru',
-      telepon,
-      alamat,
+      nama: normalizedNama,
+      nip: normalizedNip,
+      role: normalizedRole,
+      telepon: normalizedTelepon,
+      alamat: normalizedAlamat,
       tanggalLahir,
-      tempatLahir,
+      tempatLahir: normalizedTempatLahir,
     }).returning({
       password: false,
     });
@@ -132,6 +160,12 @@ router.post('/', authorize('superadmin'), logActivity('CREATE', 'users'), async 
     });
   } catch (error) {
     console.error('Create user error:', error);
+    if (error?.code === '23505') {
+      return res.status(400).json({
+        success: false,
+        message: 'Email atau NIP sudah terdaftar.',
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server.',

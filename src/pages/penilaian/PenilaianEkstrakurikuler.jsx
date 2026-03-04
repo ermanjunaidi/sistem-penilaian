@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, Award } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function PenilaianEkstrakurikuler() {
   const { penilaianEkstrakurikuler, setPenilaianEkstrakurikuler, ekstrakurikuler, dataSiswa, generateId } = useApp();
@@ -81,6 +83,17 @@ export default function PenilaianEkstrakurikuler() {
     return predikatMap[nilai] || '-';
   };
 
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(penilaianEkstrakurikuler);
+
   return (
     <div>
       <div className="page-header">
@@ -124,9 +137,9 @@ export default function PenilaianEkstrakurikuler() {
                   </td>
                 </tr>
               ) : (
-                penilaianEkstrakurikuler.map((penilaian, index) => (
+                paginatedData.map((penilaian, index) => (
                   <tr key={penilaian.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td><strong>{getSiswaName(penilaian.siswaId)}</strong></td>
                     <td>{getEkstraName(penilaian.ekstrakurikulerId)}</td>
                     <td>{penilaian.tahunAjaran}</td>
@@ -153,6 +166,14 @@ export default function PenilaianEkstrakurikuler() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">

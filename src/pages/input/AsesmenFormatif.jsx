@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, CheckSquare } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function AsesmenFormatif() {
   const { asesmenFormatif, setAsesmenFormatif, mataPelajaran, dataSiswa, generateId } = useApp();
@@ -71,6 +73,17 @@ export default function AsesmenFormatif() {
     return siswa ? siswa.nama : '-';
   };
 
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(asesmenFormatif);
+
   return (
     <div>
       <div className="page-header">
@@ -113,9 +126,9 @@ export default function AsesmenFormatif() {
                   </td>
                 </tr>
               ) : (
-                asesmenFormatif.map((asesmen, index) => (
+                paginatedData.map((asesmen, index) => (
                   <tr key={asesmen.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td>{asesmen.tanggal}</td>
                     <td><strong>{getMapelName(asesmen.mataPelajaranId)}</strong></td>
                     <td>{getSiswaName(asesmen.siswaId)}</td>
@@ -143,6 +156,14 @@ export default function AsesmenFormatif() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">

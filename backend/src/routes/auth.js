@@ -7,6 +7,7 @@ import { eq, or } from 'drizzle-orm';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
+const creatableRoles = ['admin', 'wali_kelas', 'guru'];
 
 // Login
 router.post('/login', async (req, res) => {
@@ -96,6 +97,11 @@ router.post('/login', async (req, res) => {
 router.post('/register', authenticateToken, async (req, res) => {
   try {
     const { email, password, nama, nip, role, telepon, alamat } = req.body;
+    const normalizedEmail = email?.trim();
+    const normalizedNama = nama?.trim();
+    const normalizedNip = nip?.trim() ? nip.trim() : null;
+    const normalizedTelepon = telepon?.trim() ? telepon.trim() : null;
+    const normalizedAlamat = alamat?.trim() ? alamat.trim() : null;
 
     // Check if user is superadmin
     if (req.user.role !== 'superadmin') {
@@ -105,16 +111,26 @@ router.post('/register', authenticateToken, async (req, res) => {
       });
     }
 
-    if (!email || !password || !nama) {
+    if (!normalizedEmail || !password || !normalizedNama) {
       return res.status(400).json({
         success: false,
         message: 'Email, password, dan nama wajib diisi.',
       });
     }
 
+    const normalizedRole = role || 'guru';
+    if (!creatableRoles.includes(normalizedRole)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Role tidak valid. Role yang bisa dibuat: admin, wali_kelas, guru.',
+      });
+    }
+
     // Check if email already exists
     const existingUser = await db.query.users.findFirst({
-      where: or(eq(users.email, email), eq(users.nip, nip)),
+      where: normalizedNip
+        ? or(eq(users.email, normalizedEmail), eq(users.nip, normalizedNip))
+        : eq(users.email, normalizedEmail),
     });
 
     if (existingUser) {
@@ -129,13 +145,13 @@ router.post('/register', authenticateToken, async (req, res) => {
 
     // Create user
     const newUser = await db.insert(users).values({
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
-      nama,
-      nip,
-      role: role || 'guru',
-      telepon,
-      alamat,
+      nama: normalizedNama,
+      nip: normalizedNip,
+      role: normalizedRole,
+      telepon: normalizedTelepon,
+      alamat: normalizedAlamat,
     }).returning();
 
     res.status(201).json({
@@ -151,6 +167,12 @@ router.post('/register', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Register error:', error);
+    if (error?.code === '23505') {
+      return res.status(400).json({
+        success: false,
+        message: 'Email atau NIP sudah terdaftar.',
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Terjadi kesalahan pada server.',

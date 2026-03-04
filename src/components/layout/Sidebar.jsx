@@ -11,6 +11,7 @@ const menuGroups = [
     items: [
       { path: '/', label: 'Informasi Umum', icon: Home },
       { path: '/data-sekolah', label: 'Data Sekolah', icon: School },
+      { path: '/manajemen-user', label: 'Manajemen User', icon: Settings, roles: ['superadmin'] },
       { path: '/data-siswa', label: 'Data Siswa', icon: Users, roles: ['admin', 'superadmin', 'wali_kelas'] },
       { path: '/mata-pelajaran', label: 'Mata Pelajaran', icon: BookOpen },
     ]

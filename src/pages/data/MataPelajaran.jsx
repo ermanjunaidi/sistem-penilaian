@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, BookOpen } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function MataPelajaran() {
   const { mataPelajaran, setMataPelajaran, generateId } = useApp();
@@ -61,6 +63,17 @@ export default function MataPelajaran() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(mataPelajaran);
+
   return (
     <div>
       <div className="page-header">
@@ -101,9 +114,9 @@ export default function MataPelajaran() {
                   </td>
                 </tr>
               ) : (
-                mataPelajaran.map((mapel, index) => (
+                paginatedData.map((mapel, index) => (
                   <tr key={mapel.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td>{mapel.kode}</td>
                     <td><strong>{mapel.nama}</strong></td>
                     <td>
@@ -130,6 +143,14 @@ export default function MataPelajaran() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       {showModal && (

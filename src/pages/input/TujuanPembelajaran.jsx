@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, Target } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function TujuanPembelajaran() {
   const { tujuanPembelajaran, setTujuanPembelajaran, mataPelajaran, generateId } = useApp();
@@ -64,6 +66,17 @@ export default function TujuanPembelajaran() {
     return mapel ? mapel.nama : '-';
   };
 
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(tujuanPembelajaran);
+
   return (
     <div>
       <div className="page-header">
@@ -106,9 +119,9 @@ export default function TujuanPembelajaran() {
                   </td>
                 </tr>
               ) : (
-                tujuanPembelajaran.map((tp, index) => (
+                paginatedData.map((tp, index) => (
                   <tr key={tp.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td>{tp.kode}</td>
                     <td><strong>{getMapelName(tp.mataPelajaranId)}</strong></td>
                     <td>Fase {tp.fase}</td>
@@ -132,6 +145,14 @@ export default function TujuanPembelajaran() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">

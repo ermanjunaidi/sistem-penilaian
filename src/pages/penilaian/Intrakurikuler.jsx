@@ -1,8 +1,47 @@
 import { useApp } from '../../context/AppContext';
-import { Book, Target, FileText, CheckSquare } from 'lucide-react';
+import { Book, Target, FileText, CheckSquare, Edit, Trash2 } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function Intrakurikuler() {
-  const { mataPelajaran, tujuanPembelajaran, asesmenFormatif, asesmenSumatif } = useApp();
+  const {
+    mataPelajaran,
+    setMataPelajaran,
+    tujuanPembelajaran,
+    asesmenFormatif,
+    asesmenSumatif,
+  } = useApp();
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(mataPelajaran);
+
+  const handleEditMapel = (mapel) => {
+    const namaBaru = window.prompt('Ubah nama mata pelajaran', mapel.nama);
+    if (namaBaru === null) return;
+
+    const guruBaru = window.prompt('Ubah nama guru pengampu', mapel.guru || '');
+    if (guruBaru === null) return;
+
+    setMataPelajaran((prev) =>
+      prev.map((item) =>
+        item.id === mapel.id
+          ? { ...item, nama: namaBaru.trim() || item.nama, guru: guruBaru.trim() }
+          : item
+      )
+    );
+  };
+
+  const handleDeleteMapel = (id) => {
+    if (!window.confirm('Hapus mata pelajaran ini?')) return;
+    setMataPelajaran((prev) => prev.filter((item) => item.id !== id));
+  };
 
   return (
     <div>
@@ -47,33 +86,52 @@ export default function Intrakurikuler() {
                 <th>Fase</th>
                 <th>JP/Minggu</th>
                 <th>Guru</th>
+                <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {mataPelajaran.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">
+                  <td colSpan="8" className="text-center">
                     <div className="empty-state">
                       <p>Belum ada mata pelajaran intrakurikuler.</p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                mataPelajaran.map((mapel, index) => (
+                paginatedData.map((mapel, index) => (
                   <tr key={mapel.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td>{mapel.kode}</td>
                     <td><strong>{mapel.nama}</strong></td>
                     <td>Kelompok {mapel.kelompok}</td>
                     <td>Fase {mapel.fase}</td>
                     <td>{mapel.jpPerMinggu}</td>
                     <td>{mapel.guru || '-'}</td>
+                    <td>
+                      <div className="actions">
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleEditMapel(mapel)}>
+                          <Edit size={16} />
+                        </button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteMapel(mapel.id)}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">

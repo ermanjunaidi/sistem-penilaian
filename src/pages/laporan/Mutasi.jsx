@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, UserPlus, FileText } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function Mutasi() {
   const { mutasi, setMutasi, dataSiswa, setDataSiswa, generateId } = useApp();
@@ -79,6 +81,17 @@ export default function Mutasi() {
     return siswa ? siswa.nama : '-';
   };
 
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(mutasi);
+
   return (
     <div>
       <div className="page-header">
@@ -136,9 +149,9 @@ export default function Mutasi() {
                   </td>
                 </tr>
               ) : (
-                mutasi.map((item, index) => (
+                paginatedData.map((item, index) => (
                   <tr key={item.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td>{item.tanggal}</td>
                     <td><strong>{getSiswaName(item.siswaId)}</strong></td>
                     <td>
@@ -164,6 +177,14 @@ export default function Mutasi() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">

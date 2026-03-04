@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, Search, UserPlus, FileDown, Upload, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 const KELAS_OPTIONS = ['7A', '7B', '8A', '8B', '9A', '9B'];
 
@@ -33,6 +35,28 @@ export default function DataSiswa() {
     siswa.nis.includes(searchTerm) ||
     siswa.kelas.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(filteredSiswa);
+
+  const {
+    currentPage: importCurrentPage,
+    setCurrentPage: setImportCurrentPage,
+    itemsPerPage: importItemsPerPage,
+    setItemsPerPage: setImportItemsPerPage,
+    totalItems: importTotalItems,
+    totalPages: importTotalPages,
+    startIndex: importStartIndex,
+    paginatedData: paginatedImportData,
+  } = usePagination(importData, 5);
 
   const handleOpenModal = (siswa = null) => {
     if (siswa) {
@@ -131,15 +155,8 @@ export default function DataSiswa() {
       { wch: 8 }   // Kelas
     ];
 
-    // Add header styling
-    const range = XLSX.utils.decode_range(ws['!ref']);
-    
     // Merge cells for title
     ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }];
-    
-    // Add title row
-    const titleRow = [['DATA SISWA - KURIKULUM MERDEKA']];
-    const ws2 = XLSX.utils.aoa_to_sheet(titleRow);
     
     // Combine title and data
     const wb = XLSX.utils.book_new();
@@ -234,12 +251,11 @@ export default function DataSiswa() {
           }
         }
 
-        const headers = jsonData[headerRowIndex];
         const dataRows = jsonData.slice(headerRowIndex + 1);
 
         const parsedData = dataRows
           .filter(row => row[2] || row[1]) // Filter empty rows (check Nama or NISN)
-          .map((row, index) => ({
+          .map((row) => ({
             id: generateId(),
             nis: row[0] || '',
             nisn: row[1] || '',
@@ -317,7 +333,10 @@ export default function DataSiswa() {
               className="form-input"
               placeholder="Cari siswa..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
               style={{ width: 250 }}
             />
           </div>
@@ -348,9 +367,9 @@ export default function DataSiswa() {
                   </td>
                 </tr>
               ) : (
-                filteredSiswa.map((siswa, index) => (
+                paginatedData.map((siswa, index) => (
                   <tr key={siswa.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td><span className="badge badge-primary">{siswa.kelas || '-'}</span></td>
                     <td>{siswa.nisn}</td>
                     <td><strong>{siswa.nama}</strong></td>
@@ -373,6 +392,14 @@ export default function DataSiswa() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       {showModal && (
@@ -499,9 +526,9 @@ export default function DataSiswa() {
                         </tr>
                       </thead>
                       <tbody>
-                        {importData.map((siswa, index) => (
+                        {paginatedImportData.map((siswa, index) => (
                           <tr key={index}>
-                            <td>{index + 1}</td>
+                            <td>{importStartIndex + index + 1}</td>
                             <td>{siswa.nisn}</td>
                             <td>{siswa.nama}</td>
                             <td>{siswa.jenisKelamin === 'L' ? 'L' : 'P'}</td>
@@ -511,6 +538,14 @@ export default function DataSiswa() {
                       </tbody>
                     </table>
                   </div>
+                  <Pagination
+                    totalItems={importTotalItems}
+                    currentPage={importCurrentPage}
+                    totalPages={importTotalPages}
+                    itemsPerPage={importItemsPerPage}
+                    onPageChange={setImportCurrentPage}
+                    onItemsPerPageChange={setImportItemsPerPage}
+                  />
                 </div>
               )}
             </div>

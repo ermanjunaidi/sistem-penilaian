@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, FileText } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function LingkupMateri() {
   const { lingkupMateri, setLingkupMateri, mataPelajaran, generateId } = useApp();
@@ -66,6 +68,17 @@ export default function LingkupMateri() {
     return mapel ? mapel.nama : '-';
   };
 
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(lingkupMateri);
+
   return (
     <div>
       <div className="page-header">
@@ -108,9 +121,9 @@ export default function LingkupMateri() {
                   </td>
                 </tr>
               ) : (
-                lingkupMateri.map((materi, index) => (
+                paginatedData.map((materi, index) => (
                   <tr key={materi.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td>{materi.kode}</td>
                     <td><strong>{getMapelName(materi.mataPelajaranId)}</strong></td>
                     <td>{materi.namaMateri}</td>
@@ -132,6 +145,14 @@ export default function LingkupMateri() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
 
       <div className="card">

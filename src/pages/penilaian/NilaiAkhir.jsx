@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Calculator, TrendingUp } from 'lucide-react';
+import { Calculator, TrendingUp, Edit, Trash2 } from 'lucide-react';
+import Pagination from '../../components/common/Pagination';
+import usePagination from '../../hooks/usePagination';
 
 export default function NilaiAkhir() {
   const { 
@@ -16,6 +18,8 @@ export default function NilaiAkhir() {
   const [selectedSiswa, setSelectedSiswa] = useState('');
   const [selectedTahunAjaran, setSelectedTahunAjaran] = useState('');
   const [selectedSemester, setSelectedSemester] = useState('1');
+  const [calculationPageByMapel, setCalculationPageByMapel] = useState({});
+  const [calculationItemsPerPage, setCalculationItemsPerPage] = useState(10);
 
   // Calculate average scores per subject per student
   const calculateNilai = useMemo(() => {
@@ -121,6 +125,66 @@ export default function NilaiAkhir() {
     return '#ef4444';
   };
 
+  const getCalculationPage = (mapelId) => calculationPageByMapel[mapelId] || 1;
+  const setCalculationPage = (mapelId, page) => {
+    setCalculationPageByMapel((prev) => ({ ...prev, [mapelId]: page }));
+  };
+
+  const getPredikatDanDeskripsi = (nilai) => {
+    if (nilai >= 90) return { predikat: 'A', deskripsi: 'Sangat Baik' };
+    if (nilai >= 80) return { predikat: 'B', deskripsi: 'Baik' };
+    if (nilai >= 70) return { predikat: 'C', deskripsi: 'Cukup' };
+    if (nilai >= 60) return { predikat: 'D', deskripsi: 'Kurang' };
+    return { predikat: 'E', deskripsi: 'Sangat Kurang' };
+  };
+
+  const handleEditNilai = (item) => {
+    const inputNilai = window.prompt('Ubah nilai akhir (0-100)', String(item.nilaiAkhir));
+    if (inputNilai === null) return;
+
+    const nilaiBaru = Number(inputNilai);
+    if (Number.isNaN(nilaiBaru) || nilaiBaru < 0 || nilaiBaru > 100) {
+      alert('Nilai harus berupa angka antara 0 sampai 100.');
+      return;
+    }
+
+    const inputSemester = window.prompt('Ubah semester (1: Ganjil, 2: Genap)', String(item.semester || '1'));
+    if (inputSemester === null) return;
+
+    const semesterBaru = inputSemester === '2' ? '2' : '1';
+    const { predikat, deskripsi } = getPredikatDanDeskripsi(nilaiBaru);
+
+    setNilaiAkhir((prev) =>
+      prev.map((nilai) =>
+        nilai.id === item.id
+          ? {
+              ...nilai,
+              nilaiAkhir: nilaiBaru,
+              predikat,
+              deskripsi,
+              semester: semesterBaru,
+            }
+          : nilai
+      )
+    );
+  };
+
+  const handleDeleteNilai = (id) => {
+    if (!window.confirm('Hapus data nilai akhir ini?')) return;
+    setNilaiAkhir((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const {
+    currentPage,
+    setCurrentPage,
+    itemsPerPage,
+    setItemsPerPage,
+    totalItems,
+    totalPages,
+    startIndex,
+    paginatedData,
+  } = usePagination(nilaiAkhir);
+
   return (
     <div>
       <div className="page-header">
@@ -191,9 +255,15 @@ export default function NilaiAkhir() {
             ? { [selectedSiswa]: siswaNilai[selectedSiswa] }
             : siswaNilai;
           
-          const hasData = Object.values(filteredSiswa).some(s => s && s.akhir > 0);
+          const rows = Object.values(filteredSiswa).filter(s => s && s.akhir > 0);
+          const hasData = rows.length > 0;
           
           if (!hasData) return null;
+
+          const totalMapelPages = Math.max(1, Math.ceil(rows.length / calculationItemsPerPage));
+          const currentMapelPage = Math.min(getCalculationPage(mapel.id), totalMapelPages);
+          const mapelStartIndex = (currentMapelPage - 1) * calculationItemsPerPage;
+          const paginatedRows = rows.slice(mapelStartIndex, mapelStartIndex + calculationItemsPerPage);
           
           return (
             <div key={mapel.id} className="mb-2">
@@ -213,9 +283,9 @@ export default function NilaiAkhir() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.values(filteredSiswa).filter(s => s && s.akhir > 0).map((data, index) => (
+                    {paginatedRows.map((data, index) => (
                       <tr key={data.siswa.id}>
-                        <td>{index + 1}</td>
+                        <td>{mapelStartIndex + index + 1}</td>
                         <td>{data.siswa.nisn}</td>
                         <td><strong>{data.siswa.nama}</strong></td>
                         <td>{data.formatif}</td>
@@ -234,6 +304,14 @@ export default function NilaiAkhir() {
                   </tbody>
                 </table>
               </div>
+              <Pagination
+                totalItems={rows.length}
+                currentPage={currentMapelPage}
+                totalPages={totalMapelPages}
+                itemsPerPage={calculationItemsPerPage}
+                onPageChange={(page) => setCalculationPage(mapel.id, page)}
+                onItemsPerPageChange={setCalculationItemsPerPage}
+              />
             </div>
           );
         })}
@@ -262,21 +340,22 @@ export default function NilaiAkhir() {
                 <th>Nilai Akhir</th>
                 <th>Predikat</th>
                 <th>Semester</th>
+                <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
               {nilaiAkhir.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center">
+                  <td colSpan="7" className="text-center">
                     <div className="empty-state">
                       <p>Belum ada nilai akhir yang disimpan.</p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                nilaiAkhir.map((nilai, index) => (
+                paginatedData.map((nilai, index) => (
                   <tr key={nilai.id}>
-                    <td>{index + 1}</td>
+                    <td>{startIndex + index + 1}</td>
                     <td><strong>{nilai.siswa}</strong></td>
                     <td>{nilai.mataPelajaran}</td>
                     <td>
@@ -288,12 +367,30 @@ export default function NilaiAkhir() {
                       <span className="badge badge-primary">{nilai.predikat}</span>
                     </td>
                     <td>{nilai.semester === '1' ? 'Ganjil' : 'Genap'}</td>
+                    <td>
+                      <div className="actions">
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleEditNilai(nilai)}>
+                          <Edit size={16} />
+                        </button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteNilai(nilai.id)}>
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+        <Pagination
+          totalItems={totalItems}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+          onItemsPerPageChange={setItemsPerPage}
+        />
       </div>
     </div>
   );
