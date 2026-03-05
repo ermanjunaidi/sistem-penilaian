@@ -306,7 +306,7 @@ export default function ManajemenUser() {
           </div>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -331,13 +331,13 @@ export default function ManajemenUser() {
               ) : (
                 paginatedData.map((user, index) => (
                   <tr key={user.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td>{user.nama}</td>
-                    <td>{user.email}</td>
-                    <td>{user.nip || '-'}</td>
-                    <td>{ROLE_LABELS[user.role] || user.role}</td>
-                    <td>{user.status || '-'}</td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Nama">{user.nama}</td>
+                    <td data-label="Email">{user.email}</td>
+                    <td data-label="NIP">{user.nip || '-'}</td>
+                    <td data-label="Role">{ROLE_LABELS[user.role] || user.role}</td>
+                    <td data-label="Status">{user.status || '-'}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleEdit(user)}>
                           <Edit size={16} />

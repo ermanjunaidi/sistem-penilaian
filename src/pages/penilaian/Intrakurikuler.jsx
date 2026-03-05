@@ -75,7 +75,7 @@ export default function Intrakurikuler() {
             Daftar Mata Pelajaran Intrakurikuler
           </h3>
         </div>
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -83,7 +83,6 @@ export default function Intrakurikuler() {
                 <th>Kode</th>
                 <th>Nama Mata Pelajaran</th>
                 <th>Kelompok</th>
-                <th>Fase</th>
                 <th>JP/Minggu</th>
                 <th>Guru</th>
                 <th>Aksi</th>
@@ -92,7 +91,7 @@ export default function Intrakurikuler() {
             <tbody>
               {mataPelajaran.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center">
+                  <td colSpan="7" className="text-center">
                     <div className="empty-state">
                       <p>Belum ada mata pelajaran intrakurikuler.</p>
                     </div>
@@ -101,14 +100,13 @@ export default function Intrakurikuler() {
               ) : (
                 paginatedData.map((mapel, index) => (
                   <tr key={mapel.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td>{mapel.kode}</td>
-                    <td><strong>{mapel.nama}</strong></td>
-                    <td>Kelompok {mapel.kelompok}</td>
-                    <td>Fase {mapel.fase}</td>
-                    <td>{mapel.jpPerMinggu}</td>
-                    <td>{mapel.guru || '-'}</td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Kode">{mapel.kode}</td>
+                    <td data-label="Nama Mata Pelajaran"><strong>{mapel.nama}</strong></td>
+                    <td data-label="Kelompok">Kelompok {mapel.kelompok}</td>
+                    <td data-label="JP/Minggu">{mapel.jpPerMinggu}</td>
+                    <td data-label="Guru">{mapel.guru || '-'}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleEditMapel(mapel)}>
                           <Edit size={16} />

@@ -268,7 +268,7 @@ export default function NilaiAkhir() {
           return (
             <div key={mapel.id} className="mb-2">
               <h4 style={{ marginBottom: 12, color: '#2563eb' }}>{mapel.nama}</h4>
-              <div className="table-container">
+              <div className="table-container mobile-card-table">
                 <table className="table">
                   <thead>
                     <tr>
@@ -285,20 +285,20 @@ export default function NilaiAkhir() {
                   <tbody>
                     {paginatedRows.map((data, index) => (
                       <tr key={data.siswa.id}>
-                        <td>{mapelStartIndex + index + 1}</td>
-                        <td>{data.siswa.nisn}</td>
-                        <td><strong>{data.siswa.nama}</strong></td>
-                        <td>{data.formatif}</td>
-                        <td>{data.sumatif}</td>
-                        <td>
+                        <td data-label="No">{mapelStartIndex + index + 1}</td>
+                        <td data-label="NISN">{data.siswa.nisn}</td>
+                        <td data-label="Nama Siswa"><strong>{data.siswa.nama}</strong></td>
+                        <td data-label="Formatif (30%)">{data.formatif}</td>
+                        <td data-label="Sumatif (70%)">{data.sumatif}</td>
+                        <td data-label="Nilai Akhir">
                           <strong style={{ color: getGradeColor(data.akhir), fontSize: '1.1rem' }}>
                             {data.akhir}
                           </strong>
                         </td>
-                        <td>
+                        <td data-label="Predikat">
                           <span className="badge badge-primary">{data.predikat}</span>
                         </td>
-                        <td>{data.deskripsi}</td>
+                        <td data-label="Deskripsi">{data.deskripsi}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -330,7 +330,7 @@ export default function NilaiAkhir() {
         <div className="card-header">
           <h3 className="card-title">Nilai Akhir Tersimpan</h3>
         </div>
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -355,19 +355,19 @@ export default function NilaiAkhir() {
               ) : (
                 paginatedData.map((nilai, index) => (
                   <tr key={nilai.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td><strong>{nilai.siswa}</strong></td>
-                    <td>{nilai.mataPelajaran}</td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Siswa"><strong>{nilai.siswa}</strong></td>
+                    <td data-label="Mata Pelajaran">{nilai.mataPelajaran}</td>
+                    <td data-label="Nilai Akhir">
                       <strong style={{ color: getGradeColor(nilai.nilaiAkhir) }}>
                         {nilai.nilaiAkhir}
                       </strong>
                     </td>
-                    <td>
+                    <td data-label="Predikat">
                       <span className="badge badge-primary">{nilai.predikat}</span>
                     </td>
-                    <td>{nilai.semester === '1' ? 'Ganjil' : 'Genap'}</td>
-                    <td>
+                    <td data-label="Semester">{nilai.semester === '1' ? 'Ganjil' : 'Genap'}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleEditNilai(nilai)}>
                           <Edit size={16} />

@@ -103,8 +103,7 @@ export const AppProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : {
       tahunAjaran: '',
       semester: '1',
-      kelas: '',
-      fase: ''
+      kelas: ''
     };
   });
 

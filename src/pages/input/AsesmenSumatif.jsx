@@ -110,7 +110,7 @@ export default function AsesmenSumatif() {
           </h3>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -139,20 +139,20 @@ export default function AsesmenSumatif() {
                   const status = getStatus(asesmen.nilai, asesmen.kkm);
                   return (
                     <tr key={asesmen.id}>
-                      <td>{startIndex + index + 1}</td>
-                      <td>{asesmen.tanggal}</td>
-                      <td><strong>{getMapelName(asesmen.mataPelajaranId)}</strong></td>
-                      <td>{getSiswaName(asesmen.siswaId)}</td>
-                      <td>
+                      <td data-label="No">{startIndex + index + 1}</td>
+                      <td data-label="Tanggal">{asesmen.tanggal}</td>
+                      <td data-label="Mata Pelajaran"><strong>{getMapelName(asesmen.mataPelajaranId)}</strong></td>
+                      <td data-label="Siswa">{getSiswaName(asesmen.siswaId)}</td>
+                      <td data-label="Jenis">
                         <span className="badge badge-secondary">{asesmen.jenis}</span>
                       </td>
-                      <td>
+                      <td data-label="Nilai">
                         <strong style={{ color: status.color }}>{asesmen.nilai}</strong>
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <span style={{ color: status.color, fontWeight: 600 }}>{status.text}</span>
                       </td>
-                      <td>
+                      <td data-label="Aksi">
                         <div className="actions">
                           <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(asesmen)}>
                             <Edit size={16} />

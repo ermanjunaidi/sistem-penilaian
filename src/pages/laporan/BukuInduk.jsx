@@ -365,7 +365,7 @@ export default function BukuInduk() {
           </div>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -395,18 +395,18 @@ export default function BukuInduk() {
               ) : (
                 paginatedData.map((item, index) => (
                   <tr key={item.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td>{item.nisn}</td>
-                    <td><strong>{item.nama}</strong></td>
-                    <td>{item.jenisKelamin === 'L' ? 'L' : 'P'}</td>
-                    <td>{item.tempatLahir}, {item.tanggalLahir}</td>
-                    <td>{item.agama || '-'}</td>
-                    <td>{item.namaOrtu}</td>
-                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="NISN">{item.nisn}</td>
+                    <td data-label="Nama Lengkap"><strong>{item.nama}</strong></td>
+                    <td data-label="L/P">{item.jenisKelamin === 'L' ? 'L' : 'P'}</td>
+                    <td data-label="TTL">{item.tempatLahir}, {item.tanggalLahir}</td>
+                    <td data-label="Agama">{item.agama || '-'}</td>
+                    <td data-label="Nama Orang Tua">{item.namaOrtu}</td>
+                    <td data-label="Alamat" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {item.alamat}
                     </td>
-                    <td>{item.tanggalMasuk || '-'}</td>
-                    <td>
+                    <td data-label="Tgl Masuk">{item.tanggalMasuk || '-'}</td>
+                    <td data-label="Status">
                       <span className={`badge ${
                         item.status === 'Aktif' ? 'badge-success' : 
                         item.status === 'Lulus' ? 'badge-primary' : 'badge-secondary'
@@ -414,7 +414,7 @@ export default function BukuInduk() {
                         {item.status}
                       </span>
                     </td>
-                    <td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(item)}>
                           <Edit size={16} />
@@ -590,7 +590,7 @@ export default function BukuInduk() {
                   <h4 style={{ marginBottom: '12px', fontSize: '0.9375rem' }}>
                     Preview Data ({importData.length} siswa):
                   </h4>
-                  <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  <div className="table-container mobile-card-table" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     <table className="table">
                       <thead>
                         <tr>
@@ -604,11 +604,11 @@ export default function BukuInduk() {
                       <tbody>
                         {paginatedImportData.map((siswa, index) => (
                           <tr key={index}>
-                            <td>{importStartIndex + index + 1}</td>
-                            <td>{siswa.nisn}</td>
-                            <td>{siswa.nama}</td>
-                            <td>{siswa.jenisKelamin === 'L' ? 'L' : 'P'}</td>
-                            <td>{siswa.kelas}</td>
+                            <td data-label="No">{importStartIndex + index + 1}</td>
+                            <td data-label="NISN">{siswa.nisn}</td>
+                            <td data-label="Nama">{siswa.nama}</td>
+                            <td data-label="L/P">{siswa.jenisKelamin === 'L' ? 'L' : 'P'}</td>
+                            <td data-label="Kelas">{siswa.kelas}</td>
                           </tr>
                         ))}
                       </tbody>

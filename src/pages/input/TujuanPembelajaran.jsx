@@ -12,7 +12,6 @@ export default function TujuanPembelajaran() {
     mataPelajaranId: '',
     kode: '',
     deskripsi: '',
-    fase: '',
     elemen: '',
     keterangan: ''
   });
@@ -27,7 +26,6 @@ export default function TujuanPembelajaran() {
         mataPelajaranId: '',
         kode: '',
         deskripsi: '',
-        fase: '',
         elemen: '',
         keterangan: ''
       });
@@ -95,14 +93,13 @@ export default function TujuanPembelajaran() {
           </h3>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
                 <th>No</th>
                 <th>Kode</th>
                 <th>Mata Pelajaran</th>
-                <th>Fase</th>
                 <th>Elemen</th>
                 <th>Deskripsi</th>
                 <th>Aksi</th>
@@ -111,7 +108,7 @@ export default function TujuanPembelajaran() {
             <tbody>
               {tujuanPembelajaran.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">
+                  <td colSpan="6" className="text-center">
                     <div className="empty-state">
                       <Target size={48} className="empty-state-icon" />
                       <p>Belum ada tujuan pembelajaran. Klik "Tambah Tujuan Pembelajaran" untuk menambahkan.</p>
@@ -121,15 +118,14 @@ export default function TujuanPembelajaran() {
               ) : (
                 paginatedData.map((tp, index) => (
                   <tr key={tp.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td>{tp.kode}</td>
-                    <td><strong>{getMapelName(tp.mataPelajaranId)}</strong></td>
-                    <td>Fase {tp.fase}</td>
-                    <td>{tp.elemen}</td>
-                    <td style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Kode">{tp.kode}</td>
+                    <td data-label="Mata Pelajaran"><strong>{getMapelName(tp.mataPelajaranId)}</strong></td>
+                    <td data-label="Elemen">{tp.elemen}</td>
+                    <td data-label="Deskripsi" style={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {tp.deskripsi}
                     </td>
-                    <td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(tp)}>
                           <Edit size={16} />
@@ -201,18 +197,6 @@ export default function TujuanPembelajaran() {
                   <div className="form-group">
                     <label className="form-label">Kode TP</label>
                     <input type="text" name="kode" className="form-input" value={formData.kode} onChange={handleChange} placeholder="Contoh: TP-001" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Fase</label>
-                    <select name="fase" className="form-select" value={formData.fase} onChange={handleChange}>
-                      <option value="">Pilih Fase</option>
-                      <option value="A">Fase A</option>
-                      <option value="B">Fase B</option>
-                      <option value="C">Fase C</option>
-                      <option value="D">Fase D</option>
-                      <option value="E">Fase E</option>
-                      <option value="F">Fase F</option>
-                    </select>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Elemen</label>

@@ -12,7 +12,6 @@ export default function MataPelajaran() {
     kode: '',
     nama: '',
     kelompok: 'A',
-    fase: '',
     jpPerMinggu: '',
     guru: '',
     keterangan: ''
@@ -28,7 +27,6 @@ export default function MataPelajaran() {
         kode: '',
         nama: '',
         kelompok: 'A',
-        fase: '',
         jpPerMinggu: '',
         guru: '',
         keterangan: ''
@@ -89,7 +87,7 @@ export default function MataPelajaran() {
           <h3 className="card-title">Daftar Mata Pelajaran</h3>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -97,7 +95,6 @@ export default function MataPelajaran() {
                 <th>Kode</th>
                 <th>Nama Mata Pelajaran</th>
                 <th>Kelompok</th>
-                <th>Fase</th>
                 <th>JP/Minggu</th>
                 <th>Guru</th>
                 <th>Aksi</th>
@@ -106,7 +103,7 @@ export default function MataPelajaran() {
             <tbody>
               {mataPelajaran.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center">
+                  <td colSpan="7" className="text-center">
                     <div className="empty-state">
                       <BookOpen size={48} className="empty-state-icon" />
                       <p>Belum ada mata pelajaran. Klik "Tambah Mata Pelajaran" untuk menambahkan.</p>
@@ -116,18 +113,17 @@ export default function MataPelajaran() {
               ) : (
                 paginatedData.map((mapel, index) => (
                   <tr key={mapel.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td>{mapel.kode}</td>
-                    <td><strong>{mapel.nama}</strong></td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Kode">{mapel.kode}</td>
+                    <td data-label="Nama Mata Pelajaran"><strong>{mapel.nama}</strong></td>
+                    <td data-label="Kelompok">
                       <span className={`badge ${mapel.kelompok === 'A' ? 'badge-primary' : 'badge-secondary'}`}>
                         Kelompok {mapel.kelompok}
                       </span>
                     </td>
-                    <td>Fase {mapel.fase}</td>
-                    <td>{mapel.jpPerMinggu}</td>
-                    <td>{mapel.guru}</td>
-                    <td>
+                    <td data-label="JP/Minggu">{mapel.jpPerMinggu}</td>
+                    <td data-label="Guru">{mapel.guru}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(mapel)}>
                           <Edit size={16} />
@@ -177,18 +173,6 @@ export default function MataPelajaran() {
                       <option value="A">Kelompok A (Wajib)</option>
                       <option value="B">Kelompok B (Wajib)</option>
                       <option value="C">Kelompok C (Peminatan)</option>
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Fase</label>
-                    <select name="fase" className="form-select" value={formData.fase} onChange={handleChange}>
-                      <option value="">Pilih Fase</option>
-                      <option value="A">Fase A (Kelas 1-2)</option>
-                      <option value="B">Fase B (Kelas 3-4)</option>
-                      <option value="C">Fase C (Kelas 5-6)</option>
-                      <option value="D">Fase D (Kelas 7-9)</option>
-                      <option value="E">Fase E (Kelas 10)</option>
-                      <option value="F">Fase F (Kelas 11-12)</option>
                     </select>
                   </div>
                   <div className="form-group">

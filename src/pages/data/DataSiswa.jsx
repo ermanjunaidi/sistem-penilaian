@@ -342,7 +342,7 @@ export default function DataSiswa() {
           </div>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -369,14 +369,14 @@ export default function DataSiswa() {
               ) : (
                 paginatedData.map((siswa, index) => (
                   <tr key={siswa.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td><span className="badge badge-primary">{siswa.kelas || '-'}</span></td>
-                    <td>{siswa.nisn}</td>
-                    <td><strong>{siswa.nama}</strong></td>
-                    <td>{siswa.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'}</td>
-                    <td>{siswa.tanggalLahir}</td>
-                    <td>{siswa.namaOrtu}</td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Kelas"><span className="badge badge-primary">{siswa.kelas || '-'}</span></td>
+                    <td data-label="NISN">{siswa.nisn}</td>
+                    <td data-label="Nama Siswa"><strong>{siswa.nama}</strong></td>
+                    <td data-label="L/P">{siswa.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'}</td>
+                    <td data-label="Tanggal Lahir">{siswa.tanggalLahir}</td>
+                    <td data-label="Nama Orang Tua">{siswa.namaOrtu}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(siswa)}>
                           <Edit size={16} />
@@ -514,7 +514,7 @@ export default function DataSiswa() {
                   <h4 style={{ marginBottom: '12px', fontSize: '0.9375rem' }}>
                     Preview Data ({importData.length} siswa):
                   </h4>
-                  <div className="table-container" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  <div className="table-container mobile-card-table" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     <table className="table">
                       <thead>
                         <tr>
@@ -528,11 +528,11 @@ export default function DataSiswa() {
                       <tbody>
                         {paginatedImportData.map((siswa, index) => (
                           <tr key={index}>
-                            <td>{importStartIndex + index + 1}</td>
-                            <td>{siswa.nisn}</td>
-                            <td>{siswa.nama}</td>
-                            <td>{siswa.jenisKelamin === 'L' ? 'L' : 'P'}</td>
-                            <td>{siswa.kelas}</td>
+                            <td data-label="No">{importStartIndex + index + 1}</td>
+                            <td data-label="NISN">{siswa.nisn}</td>
+                            <td data-label="Nama">{siswa.nama}</td>
+                            <td data-label="L/P">{siswa.jenisKelamin === 'L' ? 'L' : 'P'}</td>
+                            <td data-label="Kelas">{siswa.kelas}</td>
                           </tr>
                         ))}
                       </tbody>

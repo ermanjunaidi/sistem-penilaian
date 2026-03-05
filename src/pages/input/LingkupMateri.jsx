@@ -97,7 +97,7 @@ export default function LingkupMateri() {
           </h3>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -123,13 +123,13 @@ export default function LingkupMateri() {
               ) : (
                 paginatedData.map((materi, index) => (
                   <tr key={materi.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td>{materi.kode}</td>
-                    <td><strong>{getMapelName(materi.mataPelajaranId)}</strong></td>
-                    <td>{materi.namaMateri}</td>
-                    <td>{materi.alokasiWaktu} JP</td>
-                    <td>{materi.semester === '1' ? 'Ganjil' : 'Genap'}</td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Kode">{materi.kode}</td>
+                    <td data-label="Mata Pelajaran"><strong>{getMapelName(materi.mataPelajaranId)}</strong></td>
+                    <td data-label="Nama Materi">{materi.namaMateri}</td>
+                    <td data-label="Alokasi Waktu">{materi.alokasiWaktu} JP</td>
+                    <td data-label="Semester">{materi.semester === '1' ? 'Ganjil' : 'Genap'}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(materi)}>
                           <Edit size={16} />

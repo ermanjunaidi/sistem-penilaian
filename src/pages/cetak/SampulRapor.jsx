@@ -1,12 +1,19 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Printer } from 'lucide-react';
 
 export default function SampulRapor() {
   const { dataSekolah, informasiUmum, dataSiswa } = useApp();
+  const [selectedSiswa, setSelectedSiswa] = useState('');
   const printRef = useRef();
+  const selectedSiswaData = dataSiswa.find((s) => s.id === selectedSiswa);
 
   const handlePrint = () => {
+    if (!selectedSiswa) {
+      alert('Pilih siswa terlebih dahulu!');
+      return;
+    }
+
     const printContent = printRef.current.innerHTML;
     const originalContent = document.body.innerHTML;
     
@@ -118,10 +125,23 @@ export default function SampulRapor() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Sampul Rapor</h1>
-        <button className="btn btn-primary" onClick={handlePrint}>
-          <Printer size={18} />
-          Cetak Sampul
-        </button>
+        <div className="flex gap-1">
+          <select
+            className="form-select"
+            value={selectedSiswa}
+            onChange={(e) => setSelectedSiswa(e.target.value)}
+            style={{ width: 300 }}
+          >
+            <option value="">Pilih Siswa</option>
+            {dataSiswa.map((siswa) => (
+              <option key={siswa.id} value={siswa.id}>{siswa.nama}</option>
+            ))}
+          </select>
+          <button className="btn btn-primary" onClick={handlePrint} disabled={!selectedSiswa}>
+            <Printer size={18} />
+            Cetak Sampul
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -181,22 +201,17 @@ export default function SampulRapor() {
                   <tr>
                     <td>Nama Peserta Didik</td>
                     <td>:</td>
-                    <td>.............................................................</td>
+                    <td>{selectedSiswaData?.nama || '.............................................................'}</td>
                   </tr>
                   <tr>
                     <td>NISN</td>
                     <td>:</td>
-                    <td>.............................................................</td>
+                    <td>{selectedSiswaData?.nisn || '.............................................................'}</td>
                   </tr>
                   <tr>
                     <td>Kelas</td>
                     <td>:</td>
                     <td>{informasiUmum.kelas || '...........'}</td>
-                  </tr>
-                  <tr>
-                    <td>Fase</td>
-                    <td>:</td>
-                    <td>{informasiUmum.fase ? `Fase ${informasiUmum.fase}` : '...........'}</td>
                   </tr>
                 </tbody>
               </table>
@@ -230,8 +245,8 @@ export default function SampulRapor() {
           <ol style={{ marginLeft: 20 }}>
             <li>Pastikan data sekolah sudah diisi dengan lengkap di menu <strong>Data Sekolah</strong></li>
             <li>Isi informasi tahun ajaran di menu <strong>Informasi Umum</strong></li>
+            <li>Pilih siswa pada dropdown <strong>Pilih Siswa</strong></li>
             <li>Klik tombol <strong>Cetak Sampul</strong> untuk mencetak</li>
-            <li>Isi nama siswa secara manual pada sampul yang telah dicetak</li>
           </ol>
         </div>
       </div>

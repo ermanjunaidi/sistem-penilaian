@@ -11,15 +11,11 @@ const router = express.Router();
 // Get all mata pelajaran
 router.get('/mapel', authorizeHierarchy('guru'), async (req, res) => {
   try {
-    const { fase, kelompok } = req.query;
+    const { kelompok } = req.query;
 
     let mapel = await db.query.mataPelajaran.findMany({
       orderBy: [desc(mataPelajaran.createdAt)],
     });
-
-    if (fase) {
-      mapel = mapel.filter(m => m.fase === fase);
-    }
 
     if (kelompok) {
       mapel = mapel.filter(m => m.kelompok === kelompok);
@@ -70,7 +66,7 @@ router.get('/mapel/:id', authorizeHierarchy('guru'), async (req, res) => {
 // Create mapel (Admin+)
 router.post('/mapel', authorizeHierarchy('admin'), logActivity('CREATE', 'mata_pelajaran'), async (req, res) => {
   try {
-    const { kode, nama, kelompok, fase, jpPerMinggu, guru, keterangan } = req.body;
+    const { kode, nama, kelompok, jpPerMinggu, guru, keterangan } = req.body;
 
     if (!nama) {
       return res.status(400).json({
@@ -83,7 +79,6 @@ router.post('/mapel', authorizeHierarchy('admin'), logActivity('CREATE', 'mata_p
       kode,
       nama,
       kelompok: kelompok || 'A',
-      fase,
       jpPerMinggu,
       guru,
       keterangan,
@@ -108,7 +103,7 @@ router.post('/mapel', authorizeHierarchy('admin'), logActivity('CREATE', 'mata_p
 router.put('/mapel/:id', authorizeHierarchy('admin'), logActivity('UPDATE', 'mata_pelajaran'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { kode, nama, kelompok, fase, jpPerMinggu, guru, keterangan } = req.body;
+    const { kode, nama, kelompok, jpPerMinggu, guru, keterangan } = req.body;
 
     const existing = await db.query.mataPelajaran.findFirst({
       where: eq(mataPelajaran.id, id),
@@ -126,7 +121,6 @@ router.put('/mapel/:id', authorizeHierarchy('admin'), logActivity('UPDATE', 'mat
         kode: kode || undefined,
         nama: nama || undefined,
         kelompok: kelompok || undefined,
-        fase: fase || undefined,
         jpPerMinggu: jpPerMinggu || undefined,
         guru: guru || undefined,
         keterangan: keterangan || undefined,
@@ -186,7 +180,7 @@ router.delete('/mapel/:id', authorizeHierarchy('admin'), logActivity('DELETE', '
 // Get all tujuan pembelajaran
 router.get('/tujuan-pembelajaran', authorizeHierarchy('guru'), async (req, res) => {
   try {
-    const { mataPelajaranId, fase } = req.query;
+    const { mataPelajaranId } = req.query;
 
     let tp = await db.query.tujuanPembelajaran.findMany({
       orderBy: [desc(tujuanPembelajaran.createdAt)],
@@ -194,10 +188,6 @@ router.get('/tujuan-pembelajaran', authorizeHierarchy('guru'), async (req, res) 
 
     if (mataPelajaranId) {
       tp = tp.filter(t => t.mataPelajaranId === mataPelajaranId);
-    }
-
-    if (fase) {
-      tp = tp.filter(t => t.fase === fase);
     }
 
     res.json({
@@ -217,7 +207,7 @@ router.get('/tujuan-pembelajaran', authorizeHierarchy('guru'), async (req, res) 
 // Create tujuan pembelajaran (Guru+)
 router.post('/tujuan-pembelajaran', authorizeHierarchy('guru'), logActivity('CREATE', 'tujuan_pembelajaran'), async (req, res) => {
   try {
-    const { mataPelajaranId, kode, deskripsi, fase, elemen, keterangan } = req.body;
+    const { mataPelajaranId, kode, deskripsi, elemen, keterangan } = req.body;
 
     if (!deskripsi) {
       return res.status(400).json({
@@ -230,7 +220,6 @@ router.post('/tujuan-pembelajaran', authorizeHierarchy('guru'), logActivity('CRE
       mataPelajaranId,
       kode,
       deskripsi,
-      fase,
       elemen,
       keterangan,
     }).returning();
@@ -254,13 +243,12 @@ router.post('/tujuan-pembelajaran', authorizeHierarchy('guru'), logActivity('CRE
 router.put('/tujuan-pembelajaran/:id', authorizeHierarchy('guru'), async (req, res) => {
   try {
     const { id } = req.params;
-    const { kode, deskripsi, fase, elemen, keterangan } = req.body;
+    const { kode, deskripsi, elemen, keterangan } = req.body;
 
     await db.update(tujuanPembelajaran)
       .set({
         kode: kode || undefined,
         deskripsi: deskripsi || undefined,
-        fase: fase || undefined,
         elemen: elemen || undefined,
         keterangan: keterangan || undefined,
         updatedAt: new Date(),

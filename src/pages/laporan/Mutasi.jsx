@@ -125,7 +125,7 @@ export default function Mutasi() {
           </h3>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -151,17 +151,17 @@ export default function Mutasi() {
               ) : (
                 paginatedData.map((item, index) => (
                   <tr key={item.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td>{item.tanggal}</td>
-                    <td><strong>{getSiswaName(item.siswaId)}</strong></td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Tanggal">{item.tanggal}</td>
+                    <td data-label="Nama Siswa"><strong>{getSiswaName(item.siswaId)}</strong></td>
+                    <td data-label="Jenis">
                       <span className={`badge ${item.jenis === 'Masuk' ? 'badge-success' : 'badge-danger'}`}>
                         {item.jenis}
                       </span>
                     </td>
-                    <td>{item.jenis === 'Masuk' ? item.asalSekolah : item.tujuanSekolah || '-'}</td>
-                    <td>{item.nomorSurat || '-'}</td>
-                    <td>
+                    <td data-label="Asal/Tujuan Sekolah">{item.jenis === 'Masuk' ? item.asalSekolah : item.tujuanSekolah || '-'}</td>
+                    <td data-label="Nomor Surat">{item.nomorSurat || '-'}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(item)}>
                           <Edit size={16} />

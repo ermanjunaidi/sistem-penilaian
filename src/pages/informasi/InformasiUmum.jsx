@@ -25,10 +25,6 @@ export default function InformasiUmum() {
           <div className="stat-value">{informasiUmum.semester === '1' ? 'Ganjil' : 'Genap'}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Fase</div>
-          <div className="stat-value">{informasiUmum.fase || '-'}</div>
-        </div>
-        <div className="stat-card">
           <div className="stat-label">Kelas</div>
           <div className="stat-value">{informasiUmum.kelas || '-'}</div>
         </div>
@@ -63,23 +59,6 @@ export default function InformasiUmum() {
             >
               <option value="1">Ganjil</option>
               <option value="2">Genap</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label className="form-label">Fase</label>
-            <select
-              name="fase"
-              className="form-select"
-              value={informasiUmum.fase}
-              onChange={handleChange}
-            >
-              <option value="">Pilih Fase</option>
-              <option value="A">Fase A (Kelas 1-2)</option>
-              <option value="B">Fase B (Kelas 3-4)</option>
-              <option value="C">Fase C (Kelas 5-6)</option>
-              <option value="D">Fase D (Kelas 7-9)</option>
-              <option value="E">Fase E (Kelas 10)</option>
-              <option value="F">Fase F (Kelas 11-12)</option>
             </select>
           </div>
           <div className="form-group">

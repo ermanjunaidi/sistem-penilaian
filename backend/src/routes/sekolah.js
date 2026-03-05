@@ -123,7 +123,7 @@ router.get('/informasi', async (req, res) => {
 // Create/Update informasi umum (Admin+)
 router.post('/informasi', authorizeHierarchy('admin'), logActivity('UPDATE', 'informasi_umum'), async (req, res) => {
   try {
-    const { tahunAjaran, semester, kelas, fase } = req.body;
+    const { tahunAjaran, semester, kelas } = req.body;
 
     const existing = await db.query.informasiUmum.findFirst();
 
@@ -134,7 +134,6 @@ router.post('/informasi', authorizeHierarchy('admin'), logActivity('UPDATE', 'in
           tahunAjaran: tahunAjaran || undefined,
           semester: semester || undefined,
           kelas: kelas || undefined,
-          fase: fase || undefined,
           updatedAt: new Date(),
         })
         .where(eq(informasiUmum.id, existing.id))
@@ -144,7 +143,6 @@ router.post('/informasi', authorizeHierarchy('admin'), logActivity('UPDATE', 'in
         tahunAjaran,
         semester,
         kelas,
-        fase,
       }).returning();
     }
 

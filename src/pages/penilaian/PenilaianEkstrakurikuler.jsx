@@ -112,7 +112,7 @@ export default function PenilaianEkstrakurikuler() {
           </h3>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -139,18 +139,18 @@ export default function PenilaianEkstrakurikuler() {
               ) : (
                 paginatedData.map((penilaian, index) => (
                   <tr key={penilaian.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td><strong>{getSiswaName(penilaian.siswaId)}</strong></td>
-                    <td>{getEkstraName(penilaian.ekstrakurikulerId)}</td>
-                    <td>{penilaian.tahunAjaran}</td>
-                    <td>{penilaian.semester === '1' ? 'Ganjil' : 'Genap'}</td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Siswa"><strong>{getSiswaName(penilaian.siswaId)}</strong></td>
+                    <td data-label="Ekstrakurikuler">{getEkstraName(penilaian.ekstrakurikulerId)}</td>
+                    <td data-label="Tahun Ajaran">{penilaian.tahunAjaran}</td>
+                    <td data-label="Semester">{penilaian.semester === '1' ? 'Ganjil' : 'Genap'}</td>
+                    <td data-label="Nilai">
                       <span className="badge badge-primary" style={{ fontSize: '1.1rem', padding: '4px 12px' }}>
                         {penilaian.nilai}
                       </span>
                     </td>
-                    <td>{penilaian.predikat}</td>
-                    <td>
+                    <td data-label="Predikat">{penilaian.predikat}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(penilaian)}>
                           <Edit size={16} />

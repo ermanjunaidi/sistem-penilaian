@@ -7,7 +7,6 @@ export const statusEnum = pgEnum('status', ['aktif', 'nonaktif']);
 export const jenisKelaminEnum = pgEnum('jenis_kelamin', ['L', 'P']);
 export const semesterEnum = pgEnum('semester', ['1', '2']);
 export const kelompokEnum = pgEnum('kelompok', ['A', 'B', 'C']);
-export const faseEnum = pgEnum('fase', ['A', 'B', 'C', 'D', 'E', 'F']);
 export const jenisMutasiEnum = pgEnum('jenis_mutasi', ['Masuk', 'Keluar']);
 export const statusSiswaEnum = pgEnum('status_siswa', ['Aktif', 'Lulus', 'Pindah', 'Drop Out']);
 export const jenisAsesmenEnum = pgEnum('jenis_asemen', ['Kuis', 'Tugas', 'Observasi', 'Presentasi', 'Diskusi', 'Lainnya']);
@@ -61,7 +60,6 @@ export const informasiUmum = pgTable('informasi_umum', {
   tahunAjaran: varchar('tahun_ajaran', { length: 20 }).notNull(),
   semester: semesterEnum('semester').notNull().default('1'),
   kelas: varchar('kelas', { length: 50 }),
-  fase: faseEnum('fase'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -92,7 +90,6 @@ export const mataPelajaran = pgTable('mata_pelajaran', {
   kode: varchar('kode', { length: 20 }),
   nama: varchar('nama', { length: 255 }).notNull(),
   kelompok: kelompokEnum('kelompok').notNull().default('A'),
-  fase: faseEnum('fase'),
   jpPerMinggu: integer('jp_per_minggu'),
   guru: varchar('guru', { length: 255 }),
   keterangan: text('keterangan'),
@@ -120,7 +117,6 @@ export const tujuanPembelajaran = pgTable('tujuan_pembelajaran', {
   mataPelajaranId: uuid('mata_pelajaran_id').references(() => mataPelajaran.id),
   kode: varchar('kode', { length: 20 }),
   deskripsi: text('deskripsi').notNull(),
-  fase: faseEnum('fase'),
   elemen: varchar('elemen', { length: 100 }),
   keterangan: text('keterangan'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

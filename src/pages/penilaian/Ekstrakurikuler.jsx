@@ -107,7 +107,7 @@ export default function Ekstrakurikuler() {
           </h3>
         </div>
 
-        <div className="table-container">
+        <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
@@ -134,18 +134,18 @@ export default function Ekstrakurikuler() {
               ) : (
                 paginatedData.map((ekstra, index) => (
                   <tr key={ekstra.id}>
-                    <td>{startIndex + index + 1}</td>
-                    <td>{ekstra.kode}</td>
-                    <td><strong>{ekstra.nama}</strong></td>
-                    <td>
+                    <td data-label="No">{startIndex + index + 1}</td>
+                    <td data-label="Kode">{ekstra.kode}</td>
+                    <td data-label="Nama Ekstrakurikuler"><strong>{ekstra.nama}</strong></td>
+                    <td data-label="Jenis">
                       <span className={`badge ${ekstra.jenis === 'Wajib' ? 'badge-primary' : 'badge-secondary'}`}>
                         {ekstra.jenis}
                       </span>
                     </td>
-                    <td>{ekstra.pembina || '-'}</td>
-                    <td>{ekstra.jadwal || '-'}</td>
-                    <td>{ekstra.tempat || '-'}</td>
-                    <td>
+                    <td data-label="Pembina">{ekstra.pembina || '-'}</td>
+                    <td data-label="Jadwal">{ekstra.jadwal || '-'}</td>
+                    <td data-label="Tempat">{ekstra.tempat || '-'}</td>
+                    <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(ekstra)}>
                           <Edit size={16} />
