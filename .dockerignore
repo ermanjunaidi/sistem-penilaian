@@ -1,0 +1,15 @@
+.git
+.gitignore
+node_modules
+dist
+.vscode
+.idea
+*.log
+.env
+.env.*
+backend/.env
+backend/.env.*
+backend/server
+backend/server.exe
+backend/dbsetup
+backend/dbsetup.exe

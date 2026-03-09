@@ -12,7 +12,7 @@ export default function InformasiUmum() {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">Informasi Umum</h1>
+        <h1 className="page-title">Informasi Umum Update</h1>
       </div>
 
       <div className="stats-grid">
