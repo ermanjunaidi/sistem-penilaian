@@ -1,4 +1,5 @@
-:80 {
+# Development - localhost (jika DOMAIN tidak diset)
+{$DOMAIN:80} {
     root * /usr/share/caddy
     file_server
 
