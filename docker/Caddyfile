@@ -1,0 +1,13 @@
+:80 {
+    root * /usr/share/caddy
+    file_server
+
+    @api {
+        path /api/*
+    }
+    handle @api {
+        reverse_proxy backend:5000
+    }
+
+    try_files {path} /index.html
+}
