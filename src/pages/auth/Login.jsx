@@ -117,12 +117,12 @@ export default function Login() {
 
           <div className="login-info">
             <p><strong>Default Users:</strong></p>
-            <ul>
+            {/* <ul>
               <li>superadmin@school.id / admin123</li>
               <li>admin@school.id / admin123</li>
               <li>walikelas@school.id / guru123</li>
               <li>guru@school.id / guru123</li>
-            </ul>
+            </ul> */}
           </div>
         </div>
       </div>
