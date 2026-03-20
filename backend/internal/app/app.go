@@ -1,10 +1,12 @@
 package app
 
 import (
+  "bytes"
   "context"
   "encoding/json"
   "errors"
   "fmt"
+  "io"
   "log"
   "math"
   "net/http"
@@ -17,6 +19,7 @@ import (
   "github.com/go-chi/chi/v5/middleware"
   "github.com/golang-jwt/jwt/v5"
   "github.com/jackc/pgx/v5/pgxpool"
+  "github.com/xuri/excelize/v2"
   "golang.org/x/crypto/bcrypt"
 )
 
@@ -368,11 +371,14 @@ func (a *App) siswaRoutes() chi.Router {
 
 func (a *App) mapelRoutes() chi.Router {
   r := chi.NewRouter()
-  r.With(a.authorizeHierarchy("guru")).Get("/mapel", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "mata_pelajaran", map[string]string{"fase": "fase", "kelompok": "kelompok"}) })
-  r.With(a.authorizeHierarchy("guru")).Get("/mapel/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleGetByID(w, r, "mata_pelajaran", "Mata pelajaran tidak ditemukan.") })
-  r.With(a.authorizeHierarchy("admin")).Post("/mapel", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "mata_pelajaran", "Mata pelajaran berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("admin")).Put("/mapel/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "mata_pelajaran", "Mata pelajaran berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("admin")).Delete("/mapel/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "mata_pelajaran", "Mata pelajaran berhasil dihapus.") })
+  r.With(a.authorizeHierarchy("guru")).Get("/", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "mata_pelajaran", map[string]string{"fase": "fase", "kelompok": "kelompok"}) })
+  r.With(a.authorizeHierarchy("guru")).Get("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleGetByID(w, r, "mata_pelajaran", "Mata pelajaran tidak ditemukan.") })
+  r.With(a.authorizeHierarchy("admin")).Post("/", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "mata_pelajaran", "Mata pelajaran berhasil ditambahkan.") })
+  r.With(a.authorizeHierarchy("admin")).Put("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "mata_pelajaran", "Mata pelajaran berhasil diperbarui.") })
+  r.With(a.authorizeHierarchy("admin")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "mata_pelajaran", "Mata pelajaran berhasil dihapus.") })
+  r.With(a.authorizeHierarchy("guru")).Get("/export", a.exportMapel)
+  r.With(a.authorizeHierarchy("admin")).Post("/import", a.importMapel)
+  r.With(a.authorizeHierarchy("guru")).Get("/template", a.downloadMapelTemplate)
   r.With(a.authorizeHierarchy("guru")).Get("/tujuan-pembelajaran", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "tujuan_pembelajaran", map[string]string{"mataPelajaranId": "mata_pelajaran_id", "fase": "fase"}) })
   r.With(a.authorizeHierarchy("guru")).Post("/tujuan-pembelajaran", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "tujuan_pembelajaran", "Tujuan pembelajaran berhasil ditambahkan.") })
   r.With(a.authorizeHierarchy("guru")).Put("/tujuan-pembelajaran/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "tujuan_pembelajaran", "Tujuan pembelajaran berhasil diperbarui.") })
@@ -676,4 +682,234 @@ func predikat(n int) (string, string) {
   if n >= 70 { return "C", "Cukup" }
   if n >= 60 { return "D", "Kurang" }
   return "E", "Sangat Kurang"
+}
+
+// Export Mapel functions
+func (a *App) exportMapel(w http.ResponseWriter, r *http.Request) {
+  format := r.URL.Query().Get("format")
+  if format == "" { format = "json" }
+
+  rows, err := a.many(r.Context(), "SELECT id,kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan FROM mata_pelajaran ORDER BY kode")
+  if err != nil { serverErr(w, err); return }
+
+  // Transform data for frontend
+  data := make([]map[string]any, len(rows))
+  for i, row := range rows {
+    data[i] = map[string]any{
+      "id":           toStr(row["id"]),
+      "kode":         toStr(row["kode"]),
+      "nama":         toStr(row["nama"]),
+      "kelompok":     toStr(row["kelompok"]),
+      "fase":         toStr(row["fase"]),
+      "jpPerMinggu":  toStr(row["jp_per_minggu"]),
+      "guru":         toStr(row["guru"]),
+      "keterangan":   toStr(row["keterangan"]),
+    }
+  }
+
+  w.Header().Set("Content-Type", "application/json")
+  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mata_pelajaran_export_%s.json", time.Now().Format("2006-01-02")))
+  json.NewEncoder(w).Encode(map[string]any{"success": true, "data": data})
+}
+
+func (a *App) downloadMapelTemplate(w http.ResponseWriter, r *http.Request) {
+  format := r.URL.Query().Get("format")
+  if format == "" { format = "csv" }
+
+  if format == "xlsx" {
+    // Generate XLSX dynamically
+    f := excelize.NewFile()
+    f.SetSheetName("Sheet1", "Mata Pelajaran")
+
+    headerStyle, _ := f.NewStyle(&excelize.Style{
+      Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
+      Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+      Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+    })
+
+    headers := []string{"ID", "Kode", "Nama", "Kelompok", "Fase", "JP Per Minggu", "Guru", "Keterangan"}
+    for i, h := range headers {
+      cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+      f.SetCellValue("Mata Pelajaran", cell, h)
+      f.SetCellStyle("Mata Pelajaran", cell, cell, headerStyle)
+    }
+
+    samples := [][]interface{}{
+      {"", "MAP-001", "Matematika", "A", "Fase D", "6 JP", "Budi Santoso", "Mata pelajaran wajib"},
+      {"", "MAP-002", "Bahasa Indonesia", "A", "Fase D", "4 JP", "Siti Aminah", "Mata pelajaran wajib"},
+      {"", "MAP-003", "Bahasa Inggris", "A", "Fase D", "4 JP", "John Smith", "Mata pelajaran wajib"},
+    }
+
+    for i, sample := range samples {
+      row := i + 2
+      for j, val := range sample {
+        cell, _ := excelize.CoordinatesToCellName(j+1, row)
+        f.SetCellValue("Mata Pelajaran", cell, val)
+      }
+    }
+
+    colWidths := []float64{10, 12, 30, 12, 12, 15, 25, 30}
+    for i, w := range colWidths {
+      colName := string(rune('A' + i))
+      f.SetColWidth("Mata Pelajaran", colName, colName, w)
+    }
+
+    var buf bytes.Buffer
+    if err := f.Write(&buf); err != nil {
+      serverErr(w, err)
+      return
+    }
+
+    w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.xlsx")
+    w.Write(buf.Bytes())
+  } else if format == "csv" {
+    w.Header().Set("Content-Type", "text/csv")
+    w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.csv")
+    template := `id,kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan
+,MAP-001,Matematika,A,Fase D,6 JP,Budi Santoso,Mata pelajaran wajib
+,MAP-002,Bahasa Indonesia,A,Fase D,4 JP,Siti Aminah,Mata pelajaran wajib
+,MAP-003,Bahasa Inggris,A,Fase D,4 JP,John Smith,Mata pelajaran wajib
+`
+    w.Write([]byte(template))
+  } else {
+    w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.json")
+    template := map[string]any{
+      "data": []map[string]any{
+        {"id": "", "kode": "MAP-001", "nama": "Matematika", "kelompok": "A", "fase": "Fase D", "jpPerMinggu": "6 JP", "guru": "Budi Santoso", "keterangan": "Mata pelajaran wajib"},
+        {"id": "", "kode": "MAP-002", "nama": "Bahasa Indonesia", "kelompok": "A", "fase": "Fase D", "jpPerMinggu": "4 JP", "guru": "Siti Aminah", "keterangan": "Mata pelajaran wajib"},
+      },
+    }
+    json.NewEncoder(w).Encode(template)
+  }
+}
+
+func (a *App) importMapel(w http.ResponseWriter, r *http.Request) {
+  err := r.ParseMultipartForm(10 << 20) // 10 MB
+  if err != nil {
+    respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar (max 10MB)"})
+    return
+  }
+
+  file, _, err := r.FormFile("file")
+  if err != nil {
+    respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"})
+    return
+  }
+  defer file.Close()
+
+  content, err := io.ReadAll(file)
+  if err != nil {
+    serverErr(w, err)
+    return
+  }
+
+  var data []map[string]any
+
+  // Get filename
+  _, fileHeader, _ := r.FormFile("file")
+  isXlsx := strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".xlsx")
+
+  // Check if XLSX
+  if isXlsx {
+    f, err := excelize.OpenReader(bytes.NewReader(content))
+    if err != nil {
+      respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid: " + err.Error()})
+      return
+    }
+    defer f.Close()
+
+    rows, err := f.GetRows("Mata Pelajaran")
+    if err != nil {
+      respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Mata Pelajaran' tidak ditemukan"})
+      return
+    }
+
+    if len(rows) < 2 {
+      respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+      return
+    }
+
+    headers := rows[0]
+    for i := 1; i < len(rows); i++ {
+      row := rows[i]
+      if len(row) < 3 { continue } // Skip invalid rows
+
+      item := make(map[string]any)
+      for j, h := range headers {
+        if j < len(row) {
+          item[strings.ToLower(h)] = row[j]
+        }
+      }
+      if nama, ok := item["nama"].(string); ok && nama != "" {
+        data = append(data, item)
+      }
+    }
+  } else if err := json.Unmarshal(content, &data); err != nil {
+    // Try parse as CSV
+    lines := strings.Split(string(content), "\n")
+    var headers []string
+    for i, line := range lines {
+      line = strings.TrimSpace(line)
+      if line == "" || strings.HasPrefix(line, "#") { continue }
+      if i == 0 {
+        headers = strings.Split(line, ",")
+        for j := range headers { headers[j] = strings.TrimSpace(headers[j]) }
+        continue
+      }
+      values := strings.Split(line, ",")
+      if len(values) != len(headers) { continue }
+      row := make(map[string]any)
+      for j, h := range headers {
+        row[h] = strings.TrimSpace(values[j])
+      }
+      if nama, ok := row["nama"].(string); ok && nama != "" {
+        data = append(data, row)
+      }
+    }
+  }
+
+  if len(data) == 0 {
+    respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+    return
+  }
+
+  imported := 0
+  for _, item := range data {
+    nama := toStr(item["nama"])
+    if nama == "" { continue }
+
+    kode := toStr(item["kode"])
+    if kode == "" { kode = toStr(item["Kode"]) }
+    kelompok := toStr(item["kelompok"])
+    if kelompok == "" { kelompok = toStr(item["Kelompok"]) }
+    if kelompok == "" { kelompok = "A" }
+    fase := toStr(item["fase"])
+    if fase == "" { fase = toStr(item["Fase"]) }
+    jpPerMinggu := toStr(item["jpPerMinggu"])
+    if jpPerMinggu == "" { jpPerMinggu = toStr(item["JP"]) }
+    guru := toStr(item["guru"])
+    if guru == "" { guru = toStr(item["Guru"]) }
+    keterangan := toStr(item["keterangan"])
+    if keterangan == "" { keterangan = toStr(item["Keterangan"]) }
+
+    // Check if exists by kode
+    var id string
+    err := a.db.QueryRow(r.Context(), "SELECT id FROM mata_pelajaran WHERE kode=$1", kode).Scan(&id)
+    if err == nil {
+      // Update existing
+      _, err = a.db.Exec(r.Context(),
+        "UPDATE mata_pelajaran SET nama=$1, kelompok=$2, fase=$3, jp_per_minggu=$4, guru=$5, keterangan=$6, updated_at=NOW() WHERE id=$7",
+        nama, kelompok, fase, jpPerMinggu, guru, keterangan, id)
+    } else {
+      // Insert new
+      _, err = a.db.Exec(r.Context(),
+        "INSERT INTO mata_pelajaran (kode, nama, kelompok, fase, jp_per_minggu, guru, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        kode, nama, kelompok, fase, jpPerMinggu, guru, keterangan)
+    }
+    if err == nil { imported++ }
+  }
+
+  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d mata pelajaran", imported), "data": map[string]int{"imported": imported}})
 }

@@ -142,22 +142,58 @@ export const mapelAPI = {
     const queryString = new URLSearchParams(params).toString();
     return apiCall(`/mapel/mapel${queryString ? `?${queryString}` : ''}`);
   },
-  
+
   getById: (id) => apiCall(`/mapel/mapel/${id}`),
-  
-  create: (data) => 
+
+  create: (data) =>
     apiCall('/mapel/mapel', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     apiCall(`/mapel/mapel/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-  
+
   delete: (id) => apiCall(`/mapel/mapel/${id}`, { method: 'DELETE' }),
+
+  // Export/Import
+  export: (format = 'json') =>
+    apiCall(`/mapel/export?format=${format}`, {
+      method: 'GET',
+    }),
+
+  import: (formData) =>
+    fetch(`${API_URL}/mapel/import`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+      body: formData,
+    }).then(res => res.json()),
+
+  downloadTemplate: (format = 'csv') => {
+    const url = `${API_URL}/mapel/template?format=${format}`;
+    const token = localStorage.getItem('token');
+
+    console.log('Downloading template:', { url, tokenExists: !!token, token: token ? token.substring(0, 20) + '...' : null });
+
+    return fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    }).then(async res => {
+      console.log('Response status:', res.status, res.headers.get('content-type'));
+      if (!res.ok) {
+        const err = await res.json();
+        console.error('Download error:', err);
+        throw new Error(err.message || 'Download failed');
+      }
+      return res.blob();
+    });
+  },
   
   // Tujuan Pembelajaran
   getTP: (params = {}) => {

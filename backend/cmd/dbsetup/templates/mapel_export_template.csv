@@ -1,0 +1,33 @@
+# Template Export/Import Mata Pelajaran
+# Format: CSV (Comma Separated Values)
+# Encoding: UTF-8
+#
+# Instruksi Import:
+# 1. Isi data mulai dari baris ke-9 (setelah komentar)
+# 2. Kolom yang wajib diisi: nama
+# 3. Kolom 'id' akan di-generate otomatis jika kosong
+# 4. Simpan file dengan encoding UTF-8 sebelum import
+#
+# Struktur tabel mata_pelajaran:
+# - id: uuid (auto-generated jika kosong)
+# - kode: varchar(20) (opsional)
+# - nama: varchar(255) (wajib)
+# - kelompok: text (A/B/C, default: 'A')
+# - fase: text (A/B/C/D/E/F) (opsional)
+# - jp_per_minggu: text (opsional)
+# - guru: varchar(255) (opsional)
+# - keterangan: text (opsional)
+#
+# ============================================================================
+
+id,kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan
+,MAP-001,Matematika,A,Fase D,6 JP,Budi Santoso,Mata pelajaran wajib
+,MAP-002,Bahasa Indonesia,A,Fase D,4 JP,Siti Aminah,Mata pelajaran wajib
+,MAP-003,Bahasa Inggris,A,Fase D,4 JP,John Smith,Mata pelajaran wajib
+,MAP-004,Ilmu Pengetahuan Alam,A,Fase D,4 JP,Dr. Ahmad,Mata pelajaran wajib
+,MAP-005,Ilmu Pengetahuan Sosial,A,Fase D,3 JP,Prof. Maria,Mata pelajaran wajib
+,MAP-006,Pendidikan Pancasila,A,Fase D,2 JP,Drs. Hasan,Mata pelajaran wajib
+,MAP-007,Seni dan Budaya,B,Fase D,3 JP,Ibu Ratna,Mata pelajaran pilihan
+,MAP-008,Pendidikan Jasmani,B,Fase D,2 JP,Pak Joko,Mata pelajaran wajib
+,MAP-009,Informatika,C,Fase D,3 JP,Kak Fira,Mata pelajaran pilihan
+,MAP-010,Bahasa Jawa,C,Fase D,2 JP,Bu Darmi,Muatan lokal

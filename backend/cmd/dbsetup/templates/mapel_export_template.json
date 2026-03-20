@@ -1,0 +1,129 @@
+{
+  "_metadata": {
+    "description": "Template Export/Import Mata Pelajaran - Format JSON",
+    "version": "1.0",
+    "table": "mata_pelajaran",
+    "instructions": {
+      "import": [
+        "Isi array 'data' dengan objek mata pelajaran",
+        "Kolom 'id' akan di-generate otomatis jika kosong/null",
+        "Kolom 'nama' wajib diisi",
+        "Kolom 'kelompok' default: 'A' (pilihan: A, B, C)",
+        "Simpan file dengan encoding UTF-8"
+      ],
+      "export": "Data akan diekspor dalam format yang sama dengan template ini"
+    },
+    "fieldDescriptions": {
+      "id": "UUID unik (auto-generated jika kosong)",
+      "kode": "Kode mata pelajaran (maks. 20 karakter)",
+      "nama": "Nama mata pelajaran (wajib, maks. 255 karakter)",
+      "kelompok": "Kelompok mapel: A (Wajib), B (Wajib Pilihan), C (Pilihan)",
+      "fase": "Fase pembelajaran: A/B/C/D/E/F",
+      "jp_per_minggu": "Jam pelajaran per minggu (contoh: '4 JP')",
+      "guru": "Nama guru pengampu (opsional)",
+      "keterangan": "Catatan tambahan (opsional)"
+    }
+  },
+  "data": [
+    {
+      "id": "",
+      "kode": "MAP-001",
+      "nama": "Matematika",
+      "kelompok": "A",
+      "fase": "Fase D",
+      "jp_per_minggu": "6 JP",
+      "guru": "Budi Santoso",
+      "keterangan": "Mata pelajaran wajib"
+    },
+    {
+      "id": "",
+      "kode": "MAP-002",
+      "nama": "Bahasa Indonesia",
+      "kelompok": "A",
+      "fase": "Fase D",
+      "jp_per_minggu": "4 JP",
+      "guru": "Siti Aminah",
+      "keterangan": "Mata pelajaran wajib"
+    },
+    {
+      "id": "",
+      "kode": "MAP-003",
+      "nama": "Bahasa Inggris",
+      "kelompok": "A",
+      "fase": "Fase D",
+      "jp_per_minggu": "4 JP",
+      "guru": "John Smith",
+      "keterangan": "Mata pelajaran wajib"
+    },
+    {
+      "id": "",
+      "kode": "MAP-004",
+      "nama": "Ilmu Pengetahuan Alam",
+      "kelompok": "A",
+      "fase": "Fase D",
+      "jp_per_minggu": "4 JP",
+      "guru": "Dr. Ahmad",
+      "keterangan": "Mata pelajaran wajib"
+    },
+    {
+      "id": "",
+      "kode": "MAP-005",
+      "nama": "Ilmu Pengetahuan Sosial",
+      "kelompok": "A",
+      "fase": "Fase D",
+      "jp_per_minggu": "3 JP",
+      "guru": "Prof. Maria",
+      "keterangan": "Mata pelajaran wajib"
+    },
+    {
+      "id": "",
+      "kode": "MAP-006",
+      "nama": "Pendidikan Pancasila",
+      "kelompok": "A",
+      "fase": "Fase D",
+      "jp_per_minggu": "2 JP",
+      "guru": "Drs. Hasan",
+      "keterangan": "Mata pelajaran wajib"
+    },
+    {
+      "id": "",
+      "kode": "MAP-007",
+      "nama": "Seni dan Budaya",
+      "kelompok": "B",
+      "fase": "Fase D",
+      "jp_per_minggu": "3 JP",
+      "guru": "Ibu Ratna",
+      "keterangan": "Mata pelajaran pilihan"
+    },
+    {
+      "id": "",
+      "kode": "MAP-008",
+      "nama": "Pendidikan Jasmani",
+      "kelompok": "B",
+      "fase": "Fase D",
+      "jp_per_minggu": "2 JP",
+      "guru": "Pak Joko",
+      "keterangan": "Mata pelajaran wajib"
+    },
+    {
+      "id": "",
+      "kode": "MAP-009",
+      "nama": "Informatika",
+      "kelompok": "C",
+      "fase": "Fase D",
+      "jp_per_minggu": "3 JP",
+      "guru": "Kak Fira",
+      "keterangan": "Mata pelajaran pilihan"
+    },
+    {
+      "id": "",
+      "kode": "MAP-010",
+      "nama": "Bahasa Jawa",
+      "kelompok": "C",
+      "fase": "Fase D",
+      "jp_per_minggu": "2 JP",
+      "guru": "Bu Darmi",
+      "keterangan": "Muatan lokal"
+    }
+  ]
+}

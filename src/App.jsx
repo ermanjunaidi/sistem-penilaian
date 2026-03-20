@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import MainLayout from './components/layout/MainLayout';
+import Home from './pages/Home';
 import Login from './pages/auth/Login';
 import InformasiUmum from './pages/informasi/InformasiUmum';
 import DataSekolah from './pages/informasi/DataSekolah';
@@ -47,11 +48,14 @@ function ProtectedRoute({ children, allowedRoles }) {
 
 // App Routes Component
 function AppRoutes() {
+  const token = localStorage.getItem('token');
+
   return (
     <Routes>
+      <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       
-      <Route path="/" element={
+      <Route path="/dashboard" element={
         <ProtectedRoute>
           <MainLayout />
         </ProtectedRoute>
@@ -121,7 +125,7 @@ function AppRoutes() {
         } />
       </Route>
       
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to={token ? "/dashboard" : "/"} replace />} />
     </Routes>
   );
 }

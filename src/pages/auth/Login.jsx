@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { authAPI } from '../../services/api';
 import { School, Lock, Mail, Eye, EyeOff } from 'lucide-react';
 
@@ -33,7 +33,7 @@ export default function Login() {
         localStorage.setItem('user', JSON.stringify(response.data.user));
         
         // Redirect based on role
-        navigate('/');
+        navigate('/dashboard');
         window.location.reload();
       }
     } catch (err) {
@@ -115,6 +115,11 @@ export default function Login() {
             </button>
           </form>
 
+          <div style={{ textAlign: 'center', marginTop: '1.5rem' }}>
+            <Link to="/" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontSize: '0.875rem' }}>
+              ← Kembali ke Beranda
+            </Link>
+          </div>
         </div>
       </div>
     </div>

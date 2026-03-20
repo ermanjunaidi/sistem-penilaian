@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { 
   School, Users, BookOpen, ClipboardList, Target, 
   FileText, CheckSquare, Award, Printer, FileDown, 
@@ -9,48 +9,48 @@ const menuGroups = [
   {
     title: 'INFORMASI',
     items: [
-      { path: '/', label: 'Informasi Umum', icon: Home },
-      { path: '/data-sekolah', label: 'Data Sekolah', icon: School },
-      { path: '/manajemen-user', label: 'Manajemen User', icon: Settings, roles: ['superadmin'] },
-      { path: '/data-siswa', label: 'Data Siswa', icon: Users, roles: ['admin', 'superadmin', 'wali_kelas'] },
-      { path: '/mata-pelajaran', label: 'Mata Pelajaran', icon: BookOpen },
+      { path: '/dashboard', label: 'Informasi Umum', icon: Home },
+      { path: '/dashboard/data-sekolah', label: 'Data Sekolah', icon: School },
+      { path: '/dashboard/manajemen-user', label: 'Manajemen User', icon: Settings, roles: ['superadmin'] },
+      { path: '/dashboard/data-siswa', label: 'Data Siswa', icon: Users, roles: ['admin', 'superadmin', 'wali_kelas'] },
+      { path: '/dashboard/mata-pelajaran', label: 'Mata Pelajaran', icon: BookOpen },
     ]
   },
   {
     title: 'KURIKULUM',
     items: [
-      { path: '/intrakurikuler', label: 'Intrakurikuler', icon: Book },
-      { path: '/ekstrakurikuler', label: 'Ekstrakurikuler', icon: Users },
+      { path: '/dashboard/intrakurikuler', label: 'Intrakurikuler', icon: Book },
+      { path: '/dashboard/ekstrakurikuler', label: 'Ekstrakurikuler', icon: Users },
     ]
   },
   {
     title: 'INPUT',
     items: [
-      { path: '/tujuan-pembelajaran', label: 'Tujuan Pembelajaran', icon: Target, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
-      { path: '/lingkup-materi', label: 'Lingkup Materi', icon: FileText, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
-      { path: '/asesmen-formatif', label: 'Asesmen Formatif', icon: CheckSquare, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
-      { path: '/asesmen-sumatif', label: 'Asesmen Sumatif', icon: ClipboardList, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/tujuan-pembelajaran', label: 'Tujuan Pembelajaran', icon: Target, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/lingkup-materi', label: 'Lingkup Materi', icon: FileText, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/asesmen-formatif', label: 'Asesmen Formatif', icon: CheckSquare, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/asesmen-sumatif', label: 'Asesmen Sumatif', icon: ClipboardList, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
     ]
   },
   {
     title: 'PENILAIAN',
     items: [
-      { path: '/penilaian-ekstrakurikuler', label: 'Penilaian Ekstrakurikuler', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
-      { path: '/nilai-akhir', label: 'Nilai Akhir', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/penilaian-ekstrakurikuler', label: 'Penilaian Ekstrakurikuler', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/nilai-akhir', label: 'Nilai Akhir', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
     ]
   },
   {
     title: 'CETAK',
     items: [
-      { path: '/sampul-rapor', label: 'Sampul Rapor', icon: Printer },
-      { path: '/rapor', label: 'Rapor', icon: FileDown },
+      { path: '/dashboard/sampul-rapor', label: 'Sampul Rapor', icon: Printer },
+      { path: '/dashboard/rapor', label: 'Rapor', icon: FileDown },
     ]
   },
   {
     title: 'LAPORAN',
     items: [
-      { path: '/mutasi', label: 'Mutasi', icon: UserPlus, roles: ['admin', 'superadmin'] },
-      { path: '/buku-induk', label: 'Buku Induk', icon: Book, roles: ['admin', 'superadmin', 'wali_kelas'] },
+      { path: '/dashboard/mutasi', label: 'Mutasi', icon: UserPlus, roles: ['admin', 'superadmin'] },
+      { path: '/dashboard/buku-induk', label: 'Buku Induk', icon: Book, roles: ['admin', 'superadmin', 'wali_kelas'] },
     ]
   },
 ];
@@ -109,10 +109,12 @@ export default function Sidebar({ isSidebarOpen, onToggleSidebar }) {
     <aside className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-header-top">
-          <h1>
-            <School size={24} />
-            <span>Sistem Penilaian</span>
-          </h1>
+          <Link to="/dashboard" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <h1>
+              <School size={24} />
+              <span>Sistem Penilaian</span>
+            </h1>
+          </Link>
           <div className="sidebar-header-actions">
             <button
               className="sidebar-toggle"
