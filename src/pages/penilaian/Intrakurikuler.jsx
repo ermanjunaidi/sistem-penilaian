@@ -199,9 +199,9 @@ export default function Intrakurikuler() {
           <br />
           <p><strong>Struktur Kurikulum:</strong></p>
           <ul style={{ marginLeft: 20, marginTop: 8 }}>
-            <li><strong>Kelompok A:</strong> Mata pelajaran wajib (Bahasa Indonesia, Matematika, IPA, IPS, PPKn, dll)</li>
-            <li><strong>Kelompok B:</strong> Mata pelajaran wajib (Seni Budaya, PJOK, Prakarya, dll)</li>
-            <li><strong>Kelompok C:</strong> Mata pelajaran peminatan sesuai jurusan</li>
+            <li><strong>Kelompok A (Wajib Nasional):</strong> Teori & Akademik yang wajib untuk seluruh siswa (misal: PPKn, Bahasa Indonesia, Matematika, IPA, IPS).</li>
+            <li><strong>Kelompok B (Wajib Penyesuaian Sekolah):</strong> Keterampilan praktis, seni, dan jasmani yang bisa disesuaikan dengan kearifan lokal sekolah (misal: Seni Budaya, PJOK, Prakarya/Muatan Lokal).</li>
+            <li><strong>Kelompok C (Peminatan/Pilihan):</strong> Pendalaman ilmu yang lebih spesifik sesuai dengan minat, bakat, atau jurusan siswa (misal: Fisika, Ekonomi, Dasar Program Keahlian).</li>
           </ul>
         </div>
       </div>

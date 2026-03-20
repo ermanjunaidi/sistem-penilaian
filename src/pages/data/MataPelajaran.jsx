@@ -210,7 +210,7 @@ export default function MataPelajaran() {
       <div className="page-header">
         <h1 className="page-title">Mata Pelajaran</h1>
         <div className="header-actions">
-          <button className="btn btn-secondary" onClick={() => handleDownloadTemplate('csv')} title="Download Template CSV">
+          <button className="btn btn-secondary" onClick={() => handleDownloadTemplate('xlsx')} title="Download Template Excel">
             <FileSpreadsheet size={18} />
             Template
           </button>
@@ -317,9 +317,9 @@ export default function MataPelajaran() {
                   <div className="form-group">
                     <label className="form-label">Kelompok</label>
                     <select name="kelompok" className="form-select" value={formData.kelompok} onChange={handleChange}>
-                      <option value="A">Kelompok A (Wajib)</option>
-                      <option value="B">Kelompok B (Wajib)</option>
-                      <option value="C">Kelompok C (Peminatan)</option>
+                      <option value="A">Kelompok A (Wajib Nasional)</option>
+                      <option value="B">Kelompok B (Wajib Penyesuaian Sekolah)</option>
+                      <option value="C">Kelompok C (Peminatan/Pilihan)</option>
                     </select>
                   </div>
                   <div className="form-group">
@@ -356,47 +356,28 @@ export default function MataPelajaran() {
               <div className="form-group">
                 <label className="form-label">Download Template</label>
                 <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                  Download template CSV, Excel, atau JSON untuk format import
+                  Download template Excel untuk format import
                 </p>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    onClick={() => handleDownloadTemplate('csv')}
-                    disabled={isProcessing}
-                  >
-                    <FileSpreadsheet size={16} />
-                    CSV
-                  </button>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
                     onClick={() => handleDownloadTemplate('xlsx')}
                     disabled={isProcessing}
                   >
                     <FileSpreadsheet size={16} />
                     Excel
                   </button>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    onClick={() => handleDownloadTemplate('json')}
-                    disabled={isProcessing}
-                  >
-                    <FileSpreadsheet size={16} />
-                    JSON
-                  </button>
-                </div>
-              </div>
+                </div>              </div>
 
               <div className="form-group">
                 <label className="form-label">Upload File</label>
                 <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                  Format yang didukung: CSV, Excel (.xlsx), JSON
+                  Format yang didukung: Excel (.xlsx)
                 </p>
                 <input 
                   type="file" 
-                  accept=".csv,.xlsx,.json" 
+                  accept=".xlsx" 
                   onChange={handleFileChange}
                   className="form-input"
                   disabled={isProcessing}

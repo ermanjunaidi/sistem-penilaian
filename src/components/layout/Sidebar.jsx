@@ -78,7 +78,7 @@ export default function Sidebar({ isSidebarOpen, onToggleSidebar }) {
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    navigate('/login');
+    navigate('/');
   };
 
   const getRoleBadge = (role) => {
