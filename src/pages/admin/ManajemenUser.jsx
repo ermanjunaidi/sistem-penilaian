@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Users, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, Users, Edit, Trash2, X } from 'lucide-react';
 import { usersAPI } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
@@ -36,10 +36,25 @@ export default function ManajemenUser() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
 
   const resetForm = () => {
     setFormData(INITIAL_FORM);
     setEditingUser(null);
+    setError('');
+    setSuccessMessage('');
+  };
+
+  const openAddModal = () => {
+    resetForm();
+    setShowModal(true);
+  };
+
+  const closeAddModal = () => {
+    resetForm();
+    setShowModal(false);
   };
 
   const fetchUsers = async () => {
@@ -131,21 +146,29 @@ export default function ManajemenUser() {
     });
     setError('');
     setSuccessMessage('');
+    setShowModal(true);
   };
 
-  const handleDelete = async (user) => {
-    const confirmed = window.confirm(`Hapus user "${user.nama}"?`);
-    if (!confirmed) return;
+  const openDeleteModal = (user) => {
+    setUserToDelete(user);
+    setShowDeleteModal(true);
+  };
+
+  const closeDeleteModal = () => {
+    setUserToDelete(null);
+    setShowDeleteModal(false);
+  };
+
+  const handleDelete = async () => {
+    if (!userToDelete) return;
 
     setError('');
     setSuccessMessage('');
 
     try {
-      await usersAPI.delete(user.id);
-      if (editingUser?.id === user.id) {
-        resetForm();
-      }
+      await usersAPI.delete(userToDelete.id);
       setSuccessMessage('User berhasil dihapus.');
+      closeDeleteModal();
       await fetchUsers();
     } catch (err) {
       setError(err.message || 'Gagal menghapus user.');
@@ -156,131 +179,27 @@ export default function ManajemenUser() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Manajemen User</h1>
-      </div>
-
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">
-            <Plus size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+        <div className="header-actions">
+          <button className="btn btn-primary" onClick={openAddModal}>
+            <Plus size={18} />
             Tambah User
-          </h3>
+          </button>
         </div>
-
-        {error && <div className="error-message">{error}</div>}
-        {successMessage && (
-          <div style={{
-            background: '#ecfdf5',
-            border: '1px solid #86efac',
-            color: '#166534',
-            padding: '12px 16px',
-            borderRadius: 8,
-            marginBottom: 16,
-            fontSize: '0.875rem',
-          }}>
-            {successMessage}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label">Nama *</label>
-              <input
-                type="text"
-                name="nama"
-                className="form-input"
-                value={formData.nama}
-                onChange={handleChange}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Email *</label>
-              <input
-                type="email"
-                name="email"
-                className="form-input"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                disabled={Boolean(editingUser)}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">NIP</label>
-              <input
-                type="text"
-                name="nip"
-                className="form-input"
-                value={formData.nip}
-                onChange={handleChange}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Password {editingUser ? '(opsional)' : '*'}</label>
-              <input
-                type="password"
-                name="password"
-                className="form-input"
-                value={formData.password}
-                onChange={handleChange}
-                required={!editingUser}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Role *</label>
-              <select
-                name="role"
-                className="form-select"
-                value={formData.role}
-                onChange={handleChange}
-                required
-              >
-                {ROLE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Telepon</label>
-              <input
-                type="text"
-                name="telepon"
-                className="form-input"
-                value={formData.telepon}
-                onChange={handleChange}
-              />
-            </div>
-            <div className="form-group full-width">
-              <label className="form-label">Alamat</label>
-              <textarea
-                name="alamat"
-                className="form-textarea"
-                value={formData.alamat}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
-
-          <div style={{ marginTop: 16 }}>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting ? 'Menyimpan...' : editingUser ? 'Update User' : 'Simpan User'}
-            </button>
-            {editingUser && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                style={{ marginLeft: 8 }}
-                onClick={resetForm}
-              >
-                Batal Edit
-              </button>
-            )}
-          </div>
-        </form>
       </div>
+
+      {successMessage && (
+        <div style={{
+          background: '#ecfdf5',
+          border: '1px solid #86efac',
+          color: '#166534',
+          padding: '12px 16px',
+          borderRadius: 8,
+          marginBottom: 16,
+          fontSize: '0.875rem',
+        }}>
+          {successMessage}
+        </div>
+      )}
 
       <div className="card">
         <div className="card-header">
@@ -342,7 +261,7 @@ export default function ManajemenUser() {
                         <button className="btn btn-sm btn-secondary" onClick={() => handleEdit(user)}>
                           <Edit size={16} />
                         </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(user)}>
+                        <button className="btn btn-sm btn-danger" onClick={() => openDeleteModal(user)}>
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -362,6 +281,241 @@ export default function ManajemenUser() {
           onItemsPerPageChange={setItemsPerPage}
         />
       </div>
+
+      {/* Modal Tambah/Edit User */}
+      {showModal && (
+        <div className="modal-overlay" onClick={closeAddModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 700 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">
+                {editingUser ? 'Edit User' : 'Tambah User Baru'}
+              </h3>
+              <button
+                onClick={closeAddModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 4,
+                  transition: 'background 0.2s',
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {error && (
+              <div style={{
+                margin: '16px 24px 0',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#dc2626',
+                padding: '12px 16px',
+                borderRadius: 8,
+                fontSize: '0.875rem',
+              }}>
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit}>
+              <div className="modal-body">
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label className="form-label">Nama *</label>
+                    <input
+                      type="text"
+                      name="nama"
+                      className="form-input"
+                      value={formData.nama}
+                      onChange={handleChange}
+                      required
+                      autoFocus
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Email *</label>
+                    <input
+                      type="email"
+                      name="email"
+                      className="form-input"
+                      value={formData.email}
+                      onChange={handleChange}
+                      required
+                      disabled={Boolean(editingUser)}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">NIP</label>
+                    <input
+                      type="text"
+                      name="nip"
+                      className="form-input"
+                      value={formData.nip}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Password {editingUser ? '(opsional)' : '*'}</label>
+                    <input
+                      type="password"
+                      name="password"
+                      className="form-input"
+                      value={formData.password}
+                      onChange={handleChange}
+                      required={!editingUser}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Role *</label>
+                    <select
+                      name="role"
+                      className="form-select"
+                      value={formData.role}
+                      onChange={handleChange}
+                      required
+                    >
+                      {ROLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Telepon</label>
+                    <input
+                      type="text"
+                      name="telepon"
+                      className="form-input"
+                      value={formData.telepon}
+                      onChange={handleChange}
+                    />
+                  </div>
+                  <div className="form-group full-width">
+                    <label className="form-label">Alamat</label>
+                    <textarea
+                      name="alamat"
+                      className="form-textarea"
+                      value={formData.alamat}
+                      onChange={handleChange}
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={closeAddModal}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={submitting}
+                >
+                  {submitting ? 'Menyimpan...' : editingUser ? 'Update User' : 'Simpan User'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Konfirmasi Hapus */}
+      {showDeleteModal && userToDelete && (
+        <div className="modal-overlay" onClick={closeDeleteModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 450 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Konfirmasi Hapus</h3>
+              <button
+                onClick={closeDeleteModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 4,
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {error && (
+              <div style={{
+                margin: '16px 24px 0',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#dc2626',
+                padding: '12px 16px',
+                borderRadius: 8,
+                fontSize: '0.875rem',
+              }}>
+                {error}
+              </div>
+            )}
+
+            <div className="modal-body">
+              <p style={{ fontSize: '0.9375rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                Apakah Anda yakin ingin menghapus user ini?
+              </p>
+              <div style={{
+                marginTop: 16,
+                padding: '12px 16px',
+                background: 'var(--background)',
+                borderRadius: 8,
+                border: '1px solid var(--border-color)',
+              }}>
+                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: 4 }}>User:</p>
+                <p style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{userToDelete.nama}</p>
+                <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>{userToDelete.email}</p>
+              </div>
+              <p style={{
+                marginTop: 16,
+                fontSize: '0.8125rem',
+                color: '#dc2626',
+                background: '#fef2f2',
+                padding: '10px 14px',
+                borderRadius: 6,
+              }}>
+                ⚠️ Tindakan ini tidak dapat dibatalkan.
+              </p>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={closeDeleteModal}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleDelete}
+              >
+                <Trash2 size={16} />
+                Hapus User
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

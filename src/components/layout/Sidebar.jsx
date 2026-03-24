@@ -1,7 +1,7 @@
 import { NavLink, useNavigate, Link } from 'react-router-dom';
-import { 
-  School, Users, BookOpen, ClipboardList, Target, 
-  FileText, CheckSquare, Award, Printer, FileDown, 
+import {
+  School, Users, BookOpen, ClipboardList, Target,
+  FileText, CheckSquare, Award, Printer, FileDown,
   UserPlus, Book, Home, Settings, LogOut, User
 } from 'lucide-react';
 
@@ -11,8 +11,8 @@ const menuGroups = [
     items: [
       { path: '/dashboard', label: 'Informasi Umum', icon: Home },
       { path: '/dashboard/data-sekolah', label: 'Data Sekolah', icon: School },
-      { path: '/dashboard/manajemen-user', label: 'Manajemen User', icon: Settings, roles: ['superadmin'] },
-      { path: '/dashboard/data-siswa', label: 'Data Siswa', icon: Users, roles: ['admin', 'superadmin', 'wali_kelas'] },
+      { path: '/dashboard/manajemen-user', label: 'Manajemen User', icon: Settings },
+      { path: '/dashboard/data-siswa', label: 'Data Siswa', icon: Users },
       { path: '/dashboard/mata-pelajaran', label: 'Mata Pelajaran', icon: BookOpen },
     ]
   },
@@ -26,17 +26,17 @@ const menuGroups = [
   {
     title: 'INPUT',
     items: [
-      { path: '/dashboard/tujuan-pembelajaran', label: 'Tujuan Pembelajaran', icon: Target, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
-      { path: '/dashboard/lingkup-materi', label: 'Lingkup Materi', icon: FileText, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
-      { path: '/dashboard/asesmen-formatif', label: 'Asesmen Formatif', icon: CheckSquare, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
-      { path: '/dashboard/asesmen-sumatif', label: 'Asesmen Sumatif', icon: ClipboardList, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/tujuan-pembelajaran', label: 'Tujuan Pembelajaran', icon: Target },
+      { path: '/dashboard/lingkup-materi', label: 'Lingkup Materi', icon: FileText },
+      { path: '/dashboard/asesmen-formatif', label: 'Asesmen Formatif', icon: CheckSquare },
+      { path: '/dashboard/asesmen-sumatif', label: 'Asesmen Sumatif', icon: ClipboardList },
     ]
   },
   {
     title: 'PENILAIAN',
     items: [
-      { path: '/dashboard/penilaian-ekstrakurikuler', label: 'Penilaian Ekstrakurikuler', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
-      { path: '/dashboard/nilai-akhir', label: 'Nilai Akhir', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/penilaian-ekstrakurikuler', label: 'Penilaian Ekstrakurikuler', icon: Award },
+      { path: '/dashboard/nilai-akhir', label: 'Nilai Akhir', icon: Award },
     ]
   },
   {
@@ -49,27 +49,11 @@ const menuGroups = [
   {
     title: 'LAPORAN',
     items: [
-      { path: '/dashboard/mutasi', label: 'Mutasi', icon: UserPlus, roles: ['admin', 'superadmin'] },
-      { path: '/dashboard/buku-induk', label: 'Buku Induk', icon: Book, roles: ['admin', 'superadmin', 'wali_kelas'] },
+      { path: '/dashboard/mutasi', label: 'Mutasi', icon: UserPlus },
+      { path: '/dashboard/buku-induk', label: 'Buku Induk', icon: Book },
     ]
   },
 ];
-
-const roleHierarchy = {
-  guru: 1,
-  wali_kelas: 2,
-  admin: 3,
-  superadmin: 4,
-};
-
-function canAccess(itemRoles, userRole) {
-  if (!itemRoles) return true;
-  const userLevel = roleHierarchy[userRole] || 0;
-  return itemRoles.some(role => {
-    const requiredLevel = roleHierarchy[role] || 0;
-    return userLevel >= requiredLevel;
-  });
-}
 
 export default function Sidebar({ isSidebarOpen, onToggleSidebar }) {
   const navigate = useNavigate();
@@ -79,30 +63,6 @@ export default function Sidebar({ isSidebarOpen, onToggleSidebar }) {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     navigate('/');
-  };
-
-  const getRoleBadge = (role) => {
-    const colors = {
-      superadmin: { bg: '#dc2626', color: 'white' },
-      admin: { bg: '#2563eb', color: 'white' },
-      wali_kelas: { bg: '#10b981', color: 'white' },
-      guru: { bg: '#f59e0b', color: 'white' },
-    };
-    const color = colors[role] || { bg: '#64748b', color: 'white' };
-    
-    return (
-      <span style={{
-        background: color.bg,
-        color: color.color,
-        padding: '2px 8px',
-        borderRadius: '4px',
-        fontSize: '0.625rem',
-        fontWeight: 600,
-        textTransform: 'uppercase',
-      }}>
-        {role?.replace('_', ' ')}
-      </span>
-    );
   };
 
   return (
@@ -151,51 +111,45 @@ export default function Sidebar({ isSidebarOpen, onToggleSidebar }) {
         </div>
         <p className="sidebar-subtitle">Kurikulum Merdeka</p>
       </div>
-      
-      <div className="sidebar-user">
+
+      {/* <div className="sidebar-user">
         <div className="sidebar-user-info">
           <div className="sidebar-user-avatar">
             <User size={20} />
           </div>
           <div className="sidebar-user-details">
             <div className="sidebar-user-name">{user.nama || 'User'}</div>
-            <div className="sidebar-user-role">{getRoleBadge(user.role)}</div>
           </div>
         </div>
         <button className="sidebar-logout" onClick={handleLogout} title="Logout">
           <LogOut size={18} />
           <span>Logout</span>
         </button>
-      </div>
-      
+      </div> */}
+
       <nav className="sidebar-nav">
-        {menuGroups.map((group, groupIndex) => {
-          const visibleItems = group.items.filter(item => canAccess(item.roles, user.role));
-          
-          if (visibleItems.length === 0) return null;
-          
-          return (
-            <div key={groupIndex} className="nav-group">
-              <div className="nav-group-title">{group.title}</div>
-              {visibleItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    data-label={item.label}
-                    className={({ isActive }) =>
-                      `nav-item ${isActive ? 'active' : ''}`
-                    }
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </NavLink>
-                );
-              })}
-            </div>
-          );
-        })}
+        {menuGroups.map((group, groupIndex) => (
+          <div key={groupIndex} className="nav-group">
+            <div className="nav-group-title">{group.title}</div>
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  data-label={item.label}
+                  end={item.path === '/dashboard'}
+                  className={({ isActive }) =>
+                    `nav-item ${isActive ? 'active' : ''}`
+                  }
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        ))}
       </nav>
     </aside>
   );

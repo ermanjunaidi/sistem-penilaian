@@ -4,6 +4,7 @@ import { useAutoLogout } from './hooks/useAutoLogout';
 import MainLayout from './components/layout/MainLayout';
 import Home from './pages/Home';
 import Login from './pages/auth/Login';
+import Profile from './pages/Profile';
 import InformasiUmum from './pages/informasi/InformasiUmum';
 import DataSekolah from './pages/informasi/DataSekolah';
 import DataSiswa from './pages/data/DataSiswa';
@@ -80,6 +81,9 @@ function AppRoutes() {
         } />
         <Route path="manajemen-user" element={
           <ProtectedRoute allowedRoles={['superadmin']}><ManajemenUser /></ProtectedRoute>
+        } />
+        <Route path="profile" element={
+          <ProtectedRoute><Profile /></ProtectedRoute>
         } />
         
         {/* Kurikulum - All roles */}
