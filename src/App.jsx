@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
+import { useAutoLogout } from './hooks/useAutoLogout';
 import MainLayout from './components/layout/MainLayout';
 import Home from './pages/Home';
 import Login from './pages/auth/Login';
@@ -49,6 +50,9 @@ function ProtectedRoute({ children, allowedRoles }) {
 // App Routes Component
 function AppRoutes() {
   const token = localStorage.getItem('token');
+
+  // Auto-logout setelah 3 menit tidak aktif
+  useAutoLogout();
 
   return (
     <Routes>
