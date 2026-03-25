@@ -190,6 +190,7 @@ export default function ManajemenUser() {
       if (editingUser) {
         await usersAPI.update(editingUser.id, {
           nama: formData.nama,
+          email: formData.email,
           nip: formData.nip,
           role: formData.role,
           telepon: formData.telepon,
@@ -447,7 +448,6 @@ export default function ManajemenUser() {
                       value={formData.email}
                       onChange={handleChange}
                       required
-                      disabled={Boolean(editingUser)}
                     />
                   </div>
                   <div className="form-group">

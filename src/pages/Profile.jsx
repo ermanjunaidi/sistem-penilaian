@@ -1,23 +1,32 @@
-import { useState } from 'react';
-import { User, Lock, Eye, EyeOff, Save, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { User, Lock, Eye, EyeOff, Save, X, Edit, Mail, Phone } from 'lucide-react';
 import { authAPI } from '../services/api';
 
 export default function Profile() {
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
   
-  const [formData, setFormData] = useState({
+  const [passwordData, setPasswordData] = useState({
     passwordLama: '',
     passwordBaru: '',
     konfirmasiPassword: '',
+  });
+
+  const [profileData, setProfileData] = useState({
+    nama: currentUser.nama || '',
+    email: currentUser.email || '',
+    telepon: currentUser.telepon || '',
+    nip: currentUser.nip || '',
   });
   
   const [showPasswordLama, setShowPasswordLama] = useState(false);
   const [showPasswordBaru, setShowPasswordBaru] = useState(false);
   const [showKonfirmasi, setShowKonfirmasi] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const ROLE_LABELS = {
     superadmin: 'Superadmin',
@@ -26,52 +35,51 @@ export default function Profile() {
     guru: 'Guru',
   };
 
-  const handleChange = (e) => {
+  const handlePasswordChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setPasswordData((prev) => ({ ...prev, [name]: value }));
     setError('');
     setSuccessMessage('');
   };
 
-  const resetForm = () => {
-    setFormData({
+  const handleProfileChange = (e) => {
+    const { name, value } = e.target;
+    setProfileData((prev) => ({ ...prev, [name]: value }));
+    setError('');
+    setSuccessMessage('');
+  };
+
+  const resetPasswordForm = () => {
+    setPasswordData({
       passwordLama: '',
       passwordBaru: '',
       konfirmasiPassword: '',
     });
     setError('');
-    setSuccessMessage('');
   };
 
-  const handleSubmit = async (e) => {
+  const handlePasswordSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccessMessage('');
 
-    // Validasi
-    if (formData.passwordBaru.length < 6) {
+    if (passwordData.passwordBaru.length < 6) {
       setError('Password baru minimal 6 karakter.');
       return;
     }
 
-    if (formData.passwordBaru !== formData.konfirmasiPassword) {
+    if (passwordData.passwordBaru !== passwordData.konfirmasiPassword) {
       setError('Konfirmasi password tidak sama.');
-      return;
-    }
-
-    if (formData.passwordLama === formData.passwordBaru) {
-      setError('Password baru tidak boleh sama dengan password lama.');
       return;
     }
 
     setLoading(true);
 
     try {
-      await authAPI.changePassword(formData.passwordLama, formData.passwordBaru);
-
+      await authAPI.changePassword(passwordData.passwordLama, passwordData.passwordBaru);
       setSuccessMessage('Password berhasil diubah.');
-      resetForm();
-      setShowModal(false);
+      resetPasswordForm();
+      setShowPasswordModal(false);
     } catch (err) {
       setError(err.message || 'Gagal mengubah password.');
     } finally {
@@ -79,14 +87,42 @@ export default function Profile() {
     }
   };
 
-  const openModal = () => {
-    resetForm();
-    setShowModal(true);
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setProfileLoading(true);
+
+    try {
+      await authAPI.updateProfile({
+        nama: profileData.nama,
+        email: profileData.email,
+        telepon: profileData.telepon,
+      });
+
+      const updatedUser = { ...currentUser, ...profileData };
+      setCurrentUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      
+      setSuccessMessage('Profile berhasil diperbarui.');
+      setShowProfileModal(false);
+    } catch (err) {
+      setError(err.message || 'Gagal memperbarui profile.');
+    } finally {
+      setProfileLoading(false);
+    }
   };
 
-  const closeModal = () => {
-    resetForm();
-    setShowModal(false);
+  const openProfileModal = () => {
+    setProfileData({
+      nama: currentUser.nama || '',
+      email: currentUser.email || '',
+      telepon: currentUser.telepon || '',
+      nip: currentUser.nip || '',
+    });
+    setError('');
+    setSuccessMessage('');
+    setShowProfileModal(true);
   };
 
   return (
@@ -95,7 +131,7 @@ export default function Profile() {
         <h1 className="page-title">Profile Saya</h1>
       </div>
 
-      {successMessage && !showModal && (
+      {successMessage && !showPasswordModal && !showProfileModal && (
         <div style={{
           background: '#ecfdf5',
           border: '1px solid #86efac',
@@ -116,6 +152,10 @@ export default function Profile() {
             <User size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />
             Informasi Profile
           </h3>
+          <button className="btn btn-sm btn-secondary" onClick={openProfileModal}>
+            <Edit size={16} style={{ marginRight: 4 }} />
+            Edit Profile
+          </button>
         </div>
 
         <div style={{ display: 'grid', gap: 20 }}>
@@ -133,14 +173,14 @@ export default function Profile() {
               fontWeight: 700,
               boxShadow: '0 4px 12px rgba(30, 58, 95, 0.3)',
             }}>
-              {user.nama?.charAt(0)?.toUpperCase() || 'U'}
+              {currentUser.nama?.charAt(0)?.toUpperCase() || 'U'}
             </div>
             <div>
               <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-                {user.nama || 'User'}
+                {currentUser.nama || 'User'}
               </h2>
               <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                {ROLE_LABELS[user.role] || user.role}
+                {ROLE_LABELS[currentUser.role] || currentUser.role}
               </p>
             </div>
           </div>
@@ -158,7 +198,7 @@ export default function Profile() {
               border: '1px solid var(--border-color)',
             }}>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Email</p>
-              <p style={{ fontSize: '0.9375rem', color: 'var(--text-primary)', fontWeight: 500 }}>{user.email || '-'}</p>
+              <p style={{ fontSize: '0.9375rem', color: 'var(--text-primary)', fontWeight: 500 }}>{currentUser.email || '-'}</p>
             </div>
             <div style={{
               padding: 16,
@@ -167,7 +207,7 @@ export default function Profile() {
               border: '1px solid var(--border-color)',
             }}>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>NIP</p>
-              <p style={{ fontSize: '0.9375rem', color: 'var(--text-primary)', fontWeight: 500 }}>{user.nip || '-'}</p>
+              <p style={{ fontSize: '0.9375rem', color: 'var(--text-primary)', fontWeight: 500 }}>{currentUser.nip || '-'}</p>
             </div>
             <div style={{
               padding: 16,
@@ -176,7 +216,7 @@ export default function Profile() {
               border: '1px solid var(--border-color)',
             }}>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Telepon</p>
-              <p style={{ fontSize: '0.9375rem', color: 'var(--text-primary)', fontWeight: 500 }}>{user.telepon || '-'}</p>
+              <p style={{ fontSize: '0.9375rem', color: 'var(--text-primary)', fontWeight: 500 }}>{currentUser.telepon || '-'}</p>
             </div>
           </div>
         </div>
@@ -196,7 +236,7 @@ export default function Profile() {
             Ubah password secara berkala untuk menjaga keamanan account Anda.
           </p>
           
-          <button className="btn btn-primary" onClick={openModal}>
+          <button className="btn btn-primary" onClick={() => setShowPasswordModal(true)}>
             <Lock size={18} />
             Ubah Password
           </button>
@@ -204,8 +244,8 @@ export default function Profile() {
       </div>
 
       {/* Modal Ubah Password */}
-      {showModal && (
-        <div className="modal-overlay" onClick={closeModal}>
+      {showPasswordModal && (
+        <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
             <div className="modal-header">
               <h3 className="modal-title">
@@ -213,7 +253,7 @@ export default function Profile() {
                 Ubah Password
               </h3>
               <button
-                onClick={closeModal}
+                onClick={() => setShowPasswordModal(false)}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -225,8 +265,6 @@ export default function Profile() {
                   borderRadius: 4,
                   transition: 'background 0.2s',
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 <X size={20} />
               </button>
@@ -246,21 +284,7 @@ export default function Profile() {
               </div>
             )}
 
-            {successMessage && (
-              <div style={{
-                margin: '16px 24px 0',
-                background: '#ecfdf5',
-                border: '1px solid #86efac',
-                color: '#166534',
-                padding: '12px 16px',
-                borderRadius: 8,
-                fontSize: '0.875rem',
-              }}>
-                {successMessage}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handlePasswordSubmit}>
               <div className="modal-body">
                 <div className="form-group" style={{ marginBottom: 16 }}>
                   <label className="form-label">Password Lama *</label>
@@ -269,8 +293,8 @@ export default function Profile() {
                       type={showPasswordLama ? 'text' : 'password'}
                       name="passwordLama"
                       className="form-input"
-                      value={formData.passwordLama}
-                      onChange={handleChange}
+                      value={passwordData.passwordLama}
+                      onChange={handlePasswordChange}
                       required
                       autoFocus
                     />
@@ -292,8 +316,8 @@ export default function Profile() {
                       type={showPasswordBaru ? 'text' : 'password'}
                       name="passwordBaru"
                       className="form-input"
-                      value={formData.passwordBaru}
-                      onChange={handleChange}
+                      value={passwordData.passwordBaru}
+                      onChange={handlePasswordChange}
                       required
                       minLength={6}
                     />
@@ -318,8 +342,8 @@ export default function Profile() {
                       type={showKonfirmasi ? 'text' : 'password'}
                       name="konfirmasiPassword"
                       className="form-input"
-                      value={formData.konfirmasiPassword}
-                      onChange={handleChange}
+                      value={passwordData.konfirmasiPassword}
+                      onChange={handlePasswordChange}
                       required
                       minLength={6}
                     />
@@ -333,25 +357,13 @@ export default function Profile() {
                     </button>
                   </div>
                 </div>
-
-                <div style={{
-                  marginTop: 16,
-                  padding: '12px 14px',
-                  background: '#fffbeb',
-                  border: '1px solid #fde68a',
-                  borderRadius: 8,
-                  fontSize: '0.8125rem',
-                  color: '#92400e',
-                }}>
-                  <strong>💡 Tips:</strong> Gunakan password yang kuat dengan kombinasi huruf, angka, dan simbol.
-                </div>
               </div>
 
               <div className="modal-footer">
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={closeModal}
+                  onClick={() => setShowPasswordModal(false)}
                 >
                   Batal
                 </button>
@@ -360,14 +372,129 @@ export default function Profile() {
                   className="btn btn-primary"
                   disabled={loading}
                 >
-                  {loading ? (
-                    'Menyimpan...'
-                  ) : (
-                    <>
-                      <Save size={16} />
-                      Simpan Password
-                    </>
-                  )}
+                  {loading ? 'Menyimpan...' : 'Simpan Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Edit Profile */}
+      {showProfileModal && (
+        <div className="modal-overlay" onClick={() => setShowProfileModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 500 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">
+                <Edit size={20} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+                Edit Profile
+              </h3>
+              <button
+                onClick={() => setShowProfileModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 4,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 4,
+                }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {error && (
+              <div style={{
+                margin: '16px 24px 0',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                color: '#dc2626',
+                padding: '12px 16px',
+                borderRadius: 8,
+                fontSize: '0.875rem',
+              }}>
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleProfileSubmit}>
+              <div className="modal-body">
+                <div className="form-group" style={{ marginBottom: 16 }}>
+                  <label className="form-label">Nama Lengkap *</label>
+                  <div style={{ position: 'relative' }}>
+                    <User size={18} style={{ position: 'absolute', left: 12, top: 12, color: '#94a3b8' }} />
+                    <input
+                      type="text"
+                      name="nama"
+                      className="form-input"
+                      style={{ paddingLeft: 40 }}
+                      value={profileData.nama}
+                      onChange={handleProfileChange}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 16 }}>
+                  <label className="form-label">Email *</label>
+                  <div style={{ position: 'relative' }}>
+                    <Mail size={18} style={{ position: 'absolute', left: 12, top: 12, color: '#94a3b8' }} />
+                    <input
+                      type="email"
+                      name="email"
+                      className="form-input"
+                      style={{ paddingLeft: 40 }}
+                      value={profileData.email}
+                      onChange={handleProfileChange}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 16 }}>
+                  <label className="form-label">Nomor Telepon</label>
+                  <div style={{ position: 'relative' }}>
+                    <Phone size={18} style={{ position: 'absolute', left: 12, top: 12, color: '#94a3b8' }} />
+                    <input
+                      type="text"
+                      name="telepon"
+                      className="form-input"
+                      style={{ paddingLeft: 40 }}
+                      value={profileData.telepon}
+                      onChange={handleProfileChange}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">NIP (Tidak dapat diubah)</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={profileData.nip}
+                    disabled
+                    style={{ background: '#f8fafc' }}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowProfileModal(false)}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={profileLoading}
+                >
+                  {profileLoading ? 'Menyimpan...' : 'Simpan Perubahan'}
                 </button>
               </div>
             </form>

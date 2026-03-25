@@ -526,7 +526,7 @@ func (a *App) updateUser(w http.ResponseWriter, r *http.Request) {
   if toStr(body["role"]) == "superadmin" && (actor == nil || actor.Role != "superadmin") {
     respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mengubah role ke superadmin."}); return
   }
-  _, err = a.db.Exec(r.Context(), "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), nip=COALESCE(NULLIF($2,''),nip), role=COALESCE(NULLIF($3,''),role), status=COALESCE(NULLIF($4,''),status), telepon=COALESCE(NULLIF($5,''),telepon), alamat=COALESCE(NULLIF($6,''),alamat), updated_at=NOW() WHERE id=$7", toStr(body["nama"]), toStr(body["nip"]), toStr(body["role"]), toStr(body["status"]), toStr(body["telepon"]), toStr(body["alamat"]), id)
+  _, err = a.db.Exec(r.Context(), "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), email=COALESCE(NULLIF($2,''),email), nip=COALESCE(NULLIF($3,''),nip), role=COALESCE(NULLIF($4,''),role), status=COALESCE(NULLIF($5,''),status), telepon=COALESCE(NULLIF($6,''),telepon), alamat=COALESCE(NULLIF($7,''),alamat), updated_at=NOW() WHERE id=$8", toStr(body["nama"]), toStr(body["email"]), toStr(body["nip"]), toStr(body["role"]), toStr(body["status"]), toStr(body["telepon"]), toStr(body["alamat"]), id)
   if err != nil { serverErr(w, err); return }
   respond(w, 200, map[string]any{"success": true, "message": "User berhasil diperbarui."})
 }
