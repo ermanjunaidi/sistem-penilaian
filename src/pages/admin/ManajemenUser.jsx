@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, Users, Edit, Trash2, X } from 'lucide-react';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Plus, Search, Users, Edit, Trash2, X, Download, FileDown, FileUp } from 'lucide-react';
 import { usersAPI } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
@@ -39,12 +39,88 @@ export default function ManajemenUser() {
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
 
   const resetForm = () => {
     setFormData(INITIAL_FORM);
     setEditingUser(null);
     setError('');
     setSuccessMessage('');
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      setLoading(true);
+      const blob = await usersAPI.downloadTemplate('xlsx');
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_users.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      setError(err.message || 'Gagal mengunduh template.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      setLoading(true);
+      const response = await usersAPI.export('json');
+      const data = response.data;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `users_export_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setSuccessMessage('Data user berhasil diexport.');
+    } catch (err) {
+      setError(err.message || 'Gagal mengeksport data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await usersAPI.import(formData);
+      if (response.success) {
+        setSuccessMessage(response.message || 'Berhasil mengimpor data user.');
+        await fetchUsers();
+      } else {
+        throw new Error(response.message || 'Gagal mengimpor data.');
+      }
+    } catch (err) {
+      setError(err.message || 'Terjadi kesalahan saat mengimpor.');
+    } finally {
+      setLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const openAddModal = () => {
@@ -180,7 +256,30 @@ export default function ManajemenUser() {
       <div className="page-header">
         <h1 className="page-title">Manajemen User</h1>
         <div className="header-actions">
-          <button className="btn btn-primary" onClick={openAddModal}>
+          <button className="btn btn-secondary" onClick={handleDownloadTemplate} title="Unduh Template (Excel)" disabled={loading}>
+            <Download size={18} />
+            Template
+          </button>
+          {currentUser.role === 'superadmin' && (
+            <>
+              <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} title="Import dari CSV/Excel" disabled={loading}>
+                <FileUp size={18} />
+                Import
+              </button>
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept=".csv,.xlsx"
+                onChange={handleImport}
+              />
+            </>
+          )}
+          <button className="btn btn-secondary" onClick={handleExport} title="Export Data (JSON)" disabled={loading}>
+            <FileDown size={18} />
+            Export
+          </button>
+          <button className="btn btn-primary" onClick={openAddModal} disabled={loading}>
             <Plus size={18} />
             Tambah User
           </button>

@@ -252,7 +252,7 @@ func (a *App) updateMe(w http.ResponseWriter, r *http.Request) {
   u := currentUser(r)
   body, err := readBody(r)
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  _, err = a.db.Exec(r.Context(), "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), telepon=COALESCE(NULLIF($2,''),telepon), alamat=COALESCE(NULLIF($3,''),alamat), foto=COALESCE(NULLIF($4,''),foto), updated_at=NOW() WHERE id=$5", toStr(body["nama"]), toStr(body["telepon"]), toStr(body["alamat"]), toStr(body["foto"]), u.ID)
+  _, err = a.db.Exec(r.Context(), "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), email=COALESCE(NULLIF($2,''),email), telepon=COALESCE(NULLIF($3,''),telepon), alamat=COALESCE(NULLIF($4,''),alamat), foto=COALESCE(NULLIF($5,''),foto), updated_at=NOW() WHERE id=$6", toStr(body["nama"]), toStr(body["email"]), toStr(body["telepon"]), toStr(body["alamat"]), toStr(body["foto"]), u.ID)
   if err != nil { serverErr(w, err); return }
   respond(w, 200, map[string]any{"success": true, "message": "Profil berhasil diperbarui."})
 }
@@ -276,12 +276,216 @@ func (a *App) changePassword(w http.ResponseWriter, r *http.Request) {
 func (a *App) usersRoutes() chi.Router {
   r := chi.NewRouter()
   r.With(a.authorizeHierarchy("admin")).Get("/", a.listUsers)
+  r.With(a.authorizeHierarchy("admin")).Get("/action/export", a.exportUsers)
+  r.With(a.authorize("superadmin")).Post("/action/import", a.importUsers)
+  r.With(a.authorizeHierarchy("admin")).Get("/action/template", a.downloadUserTemplate)
   r.With(a.authorizeHierarchy("admin")).Get("/{id}", a.getUser)
   r.With(a.authorize("superadmin")).Post("/", a.createUser)
   r.With(a.authorizeHierarchy("admin")).Put("/{id}", a.updateUser)
   r.With(a.authorize("superadmin")).Delete("/{id}", a.deleteUser)
   r.With(a.authorizeHierarchy("admin")).Put("/{id}/reset-password", a.resetPassword)
   return r
+}
+
+func (a *App) exportUsers(w http.ResponseWriter, r *http.Request) {
+  rows, err := a.many(r.Context(), "SELECT id,email,nama,nip,role,status,telepon,alamat FROM users ORDER BY created_at DESC")
+  if err != nil { serverErr(w, err); return }
+
+  data := make([]map[string]any, len(rows))
+  for i, row := range rows {
+    data[i] = map[string]any{
+      "id":      toStr(row["id"]),
+      "email":   toStr(row["email"]),
+      "nama":    toStr(row["nama"]),
+      "nip":     toStr(row["nip"]),
+      "role":    toStr(row["role"]),
+      "status":  toStr(row["status"]),
+      "telepon": toStr(row["telepon"]),
+      "alamat":  toStr(row["alamat"]),
+    }
+  }
+
+  w.Header().Set("Content-Type", "application/json")
+  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=users_export_%s.json", time.Now().Format("2006-01-02")))
+  json.NewEncoder(w).Encode(map[string]any{"success": true, "data": data})
+}
+
+func (a *App) downloadUserTemplate(w http.ResponseWriter, r *http.Request) {
+  format := r.URL.Query().Get("format")
+  if format == "" { format = "csv" }
+
+  if format == "xlsx" {
+    f := excelize.NewFile()
+    f.SetSheetName("Sheet1", "Users")
+
+    headerStyle, _ := f.NewStyle(&excelize.Style{
+      Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
+      Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+      Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+    })
+
+    headers := []string{"Email", "Password", "Nama", "NIP", "Role", "Telepon", "Alamat"}
+    for i, h := range headers {
+      cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+      f.SetCellValue("Users", cell, h)
+      f.SetCellStyle("Users", cell, cell, headerStyle)
+    }
+
+    samples := [][]interface{}{
+      {"guru1@school.id", "password123", "Guru Satu, S.Pd", "199001012020011001", "guru", "08123456789", "Jl. Sekolah No. 1"},
+      {"admin2@school.id", "password123", "Admin Dua", "199101012021011002", "admin", "08123456790", "Jl. Sekolah No. 2"},
+    }
+
+    for i, sample := range samples {
+      row := i + 2
+      for j, val := range sample {
+        cell, _ := excelize.CoordinatesToCellName(j+1, row)
+        f.SetCellValue("Users", cell, val)
+      }
+    }
+
+    colWidths := []float64{25, 15, 25, 20, 12, 15, 30}
+    for i, w := range colWidths {
+      colName := string(rune('A' + i))
+      f.SetColWidth("Users", colName, colName, w)
+    }
+
+    var buf bytes.Buffer
+    if err := f.Write(&buf); err != nil {
+      serverErr(w, err)
+      return
+    }
+
+    w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    w.Header().Set("Content-Disposition", "attachment; filename=template_users.xlsx")
+    w.Write(buf.Bytes())
+  } else {
+    w.Header().Set("Content-Type", "text/csv")
+    w.Header().Set("Content-Disposition", "attachment; filename=template_users.csv")
+    template := `email,password,nama,nip,role,telepon,alamat
+guru1@school.id,password123,"Guru Satu, S.Pd",199001012020011001,guru,08123456789,Jl. Sekolah No. 1
+admin2@school.id,password123,Admin Dua,199101012021011002,admin,08123456790,Jl. Sekolah No. 2
+`
+    w.Write([]byte(template))
+  }
+}
+
+func (a *App) importUsers(w http.ResponseWriter, r *http.Request) {
+  err := r.ParseMultipartForm(10 << 20)
+  if err != nil {
+    respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar (max 10MB)"})
+    return
+  }
+
+  file, _, err := r.FormFile("file")
+  if err != nil {
+    respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"})
+    return
+  }
+  defer file.Close()
+
+  content, err := io.ReadAll(file)
+  if err != nil { serverErr(w, err); return }
+
+  var data []map[string]any
+  _, fileHeader, _ := r.FormFile("file")
+  isXlsx := strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".xlsx")
+
+  if isXlsx {
+    f, err := excelize.OpenReader(bytes.NewReader(content))
+    if err != nil {
+      respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid: " + err.Error()})
+      return
+    }
+    defer f.Close()
+
+    rows, err := f.GetRows("Users")
+    if err != nil {
+      respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Users' tidak ditemukan"})
+      return
+    }
+
+    if len(rows) < 2 {
+      respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+      return
+    }
+
+    headers := rows[0]
+    for i := 1; i < len(rows); i++ {
+      row := rows[i]
+      item := make(map[string]any)
+      for j, h := range headers {
+        if j < len(row) {
+          item[strings.ToLower(h)] = row[j]
+        }
+      }
+      if email, ok := item["email"].(string); ok && email != "" {
+        data = append(data, item)
+      }
+    }
+  } else {
+    // CSV
+    lines := strings.Split(string(content), "\n")
+    var headers []string
+    for i, line := range lines {
+      line = strings.TrimSpace(line)
+      if line == "" || strings.HasPrefix(line, "#") { continue }
+      if i == 0 {
+        headers = strings.Split(line, ",")
+        for j := range headers { headers[j] = strings.TrimSpace(headers[j]) }
+        continue
+      }
+      values := strings.Split(line, ",")
+      if len(values) < 3 { continue }
+      row := make(map[string]any)
+      for j, h := range headers {
+        if j < len(values) {
+          row[h] = strings.TrimSpace(values[j])
+        }
+      }
+      if email, ok := row["email"].(string); ok && email != "" {
+        data = append(data, row)
+      }
+    }
+  }
+
+  if len(data) == 0 {
+    respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+    return
+  }
+
+  imported := 0
+  for _, item := range data {
+    email := strings.TrimSpace(toStr(item["email"]))
+    if email == "" { continue }
+
+    password := toStr(item["password"])
+    nama := toStr(item["nama"])
+    nip := toStr(item["nip"])
+    role := toStr(item["role"])
+    if role == "" { role = "guru" }
+    telepon := toStr(item["telepon"])
+    alamat := toStr(item["alamat"])
+
+    var id string
+    err := a.db.QueryRow(r.Context(), "SELECT id FROM users WHERE email=$1", email).Scan(&id)
+    if err == nil {
+      // Update
+      _, err = a.db.Exec(r.Context(),
+        "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), nip=COALESCE(NULLIF($2,''),nip), role=COALESCE(NULLIF($3,''),role), telepon=COALESCE(NULLIF($4,''),telepon), alamat=COALESCE(NULLIF($5,''),alamat), updated_at=NOW() WHERE id=$6",
+        nama, nip, role, telepon, alamat, id)
+    } else {
+      // Insert
+      if password == "" { password = "password123" }
+      hash, _ := bcrypt.GenerateFromPassword([]byte(password), 10)
+      _, err = a.db.Exec(r.Context(),
+        "INSERT INTO users (email, password, nama, nip, role, telepon, alamat) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        email, string(hash), nama, nip, role, telepon, alamat)
+    }
+    if err == nil { imported++ }
+  }
+
+  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d user", imported), "data": map[string]int{"imported": imported}})
 }
 
 func (a *App) listUsers(w http.ResponseWriter, r *http.Request) {

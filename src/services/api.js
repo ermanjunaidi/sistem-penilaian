@@ -87,6 +87,38 @@ export const usersAPI = {
       method: 'PUT',
       body: JSON.stringify({ newPassword }),
     }),
+
+  // Export/Import
+  export: (format = 'json') =>
+    apiCall(`/users/action/export?format=${format}`, {
+      method: 'GET',
+    }),
+
+  import: (formData) =>
+    fetch(`${API_URL}/users/action/import`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+      body: formData,
+    }).then(res => res.json()),
+
+  downloadTemplate: (format = 'csv') => {
+    const url = `${API_URL}/users/action/template?format=${format}`;
+    const token = localStorage.getItem('token');
+
+    return fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    }).then(async res => {
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || 'Download failed');
+      }
+      return res.blob();
+    });
+  },
 };
 
 // Sekolah API
