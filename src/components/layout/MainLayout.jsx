@@ -10,15 +10,10 @@ export default function MainLayout() {
     // Desktop: selalu terbuka default, Mobile: selalu tertutup default
     return isDesktop;
   });
-  const [colorTheme, setColorTheme] = useState(() => localStorage.getItem('colorTheme') || 'terang');
 
   useEffect(() => {
     localStorage.setItem('sidebarOpen', JSON.stringify(isSidebarOpen));
   }, [isSidebarOpen]);
-
-  useEffect(() => {
-    localStorage.setItem('colorTheme', colorTheme);
-  }, [colorTheme]);
 
   // Auto open sidebar saat resize ke desktop, auto close saat ke mobile
   useEffect(() => {
@@ -32,15 +27,13 @@ export default function MainLayout() {
   }, []);
 
   return (
-    <div className={`app-container ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'} theme-${colorTheme}`}>
+    <div className={`app-container ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
       <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)} />
       <Sidebar isSidebarOpen={isSidebarOpen} onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
       <div className="main-content">
         <Header 
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} 
           isSidebarOpen={isSidebarOpen}
-          colorTheme={colorTheme}
-          onChangeColorTheme={setColorTheme}
         />
         <main className="content">
           <Outlet />

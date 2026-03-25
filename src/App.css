@@ -55,28 +55,6 @@ body {
   min-height: 100vh;
 }
 
-.app-container.theme-terang {
-  --primary-color: #1e3a5f;
-  --primary-dark: #0f2744;
-  --background: #f5f7fa;
-  --background-gradient: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
-  --surface: #ffffff;
-  --border-color: #e2e8f0;
-  --sidebar-bg: #0a1628;
-  --sidebar-bg-2: #0d1f3a;
-}
-
-.app-container.theme-gelap {
-  --primary-color: #2d5a87;
-  --primary-dark: #1e3a5f;
-  --background: #1a202c;
-  --background-gradient: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
-  --surface: #2d3748;
-  --border-color: #4a5568;
-  --sidebar-bg: #07101f;
-  --sidebar-bg-2: #0a1628;
-}
-
 /* Sidebar */
 .sidebar {
   width: var(--sidebar-width);
@@ -769,33 +747,6 @@ body {
   background: #fef2f2;
 }
 
-.theme-switch {
-  display: inline-flex;
-  align-items: center;
-  background: #dbe5f4;
-  border-radius: 999px;
-  padding: 3px;
-  border: 1px solid #c7d5eb;
-}
-
-.theme-btn {
-  border: none;
-  background: transparent;
-  color: #475569;
-  font-size: 0.75rem;
-  font-weight: 700;
-  padding: 6px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.theme-btn.active {
-  background: #ffffff;
-  color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(15, 31, 61, 0.14);
-}
-
 .date {
   font-size: 0.875rem;
   color: var(--text-secondary);
@@ -1317,11 +1268,6 @@ body {
     display: none;
   }
 
-  .theme-btn {
-    padding: 5px 10px;
-    font-size: 0.7rem;
-  }
-
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
@@ -1585,11 +1531,6 @@ body {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-
-  .theme-switch {
-    transform: scale(0.95);
-    transform-origin: right center;
   }
 
   .table {
