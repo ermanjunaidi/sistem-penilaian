@@ -18,7 +18,6 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Admin' },
   { value: 'wali_kelas', label: 'Wali Kelas' },
   { value: 'guru', label: 'Guru' },
-  { value: 'wali_murid', label: 'Wali Murid' },
 ];
 
 const ROLE_LABELS = {
@@ -26,7 +25,6 @@ const ROLE_LABELS = {
   admin: 'Admin',
   wali_kelas: 'Wali Kelas',
   guru: 'Guru',
-  wali_murid: 'Wali Murid',
 };
 
 export default function ManajemenUser() {
@@ -187,15 +185,6 @@ export default function ManajemenUser() {
     setSubmitting(true);
     setError('');
     setSuccessMessage('');
-
-    // Validasi aturan: Wali Murid bisa jadi Guru, tapi Guru tidak bisa jadi Wali Murid
-    if (editingUser) {
-      if (editingUser.role === 'guru' && formData.role === 'wali_murid') {
-        setError('Gagal: User dengan role Guru tidak dapat diubah menjadi Wali Murid.');
-        setSubmitting(false);
-        return;
-      }
-    }
 
     try {
       if (editingUser) {

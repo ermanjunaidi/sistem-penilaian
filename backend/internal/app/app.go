@@ -233,7 +233,7 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
   if role == "" { role = "guru" }
   if role == "superadmin" && u.Role != "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mendaftarkan superadmin baru."}); return }
   if email == "" || password == "" || nama == "" { respond(w, 400, map[string]any{"success": false, "message": "Email, password, dan nama wajib diisi."}); return }
-  if !(role == "admin" || role == "wali_kelas" || role == "guru" || role == "wali_murid") { respond(w, 400, map[string]any{"success": false, "message": "Role tidak valid. Role yang bisa dibuat: admin, wali_kelas, guru, wali_murid."}); return }
+  if !(role == "admin" || role == "wali_kelas" || role == "guru") { respond(w, 400, map[string]any{"success": false, "message": "Role tidak valid. Role yang bisa dibuat: admin, wali_kelas, guru."}); return }
   exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE email=$1 OR ($2::text IS NOT NULL AND nip=$2) LIMIT 1", email, nip)
   if exists != nil { respond(w, 400, map[string]any{"success": false, "message": "Email atau NIP sudah terdaftar."}); return }
   hash, _ := bcrypt.GenerateFromPassword([]byte(password), 10)
@@ -526,13 +526,6 @@ func (a *App) updateUser(w http.ResponseWriter, r *http.Request) {
   actor := currentUser(r)
   if toStr(body["role"]) == "superadmin" && (actor == nil || actor.Role != "superadmin") {
     respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mengubah role ke superadmin."}); return
-  }
-
-  // Aturan: Guru tidak bisa menjadi Wali Murid
-  var currentRole string
-  err = a.db.QueryRow(r.Context(), "SELECT role FROM users WHERE id=$1", id).Scan(&currentRole)
-  if err == nil && currentRole == "guru" && toStr(body["role"]) == "wali_murid" {
-    respond(w, 400, map[string]any{"success": false, "message": "User dengan role Guru tidak dapat diubah menjadi Wali Murid."}); return
   }
 
   _, err = a.db.Exec(r.Context(), "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), email=COALESCE(NULLIF($2,''),email), nip=COALESCE(NULLIF($3,''),nip), role=COALESCE(NULLIF($4,''),role), status=COALESCE(NULLIF($5,''),status), telepon=COALESCE(NULLIF($6,''),telepon), alamat=COALESCE(NULLIF($7,''),alamat), updated_at=NOW() WHERE id=$8", toStr(body["nama"]), toStr(body["email"]), toStr(body["nip"]), toStr(body["role"]), toStr(body["status"]), toStr(body["telepon"]), toStr(body["alamat"]), id)
