@@ -80,7 +80,7 @@ function AppRoutes() {
           <ProtectedRoute><MataPelajaran /></ProtectedRoute>
         } />
         <Route path="manajemen-user" element={
-          <ProtectedRoute allowedRoles={['superadmin']}><ManajemenUser /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin', 'superadmin']}><ManajemenUser /></ProtectedRoute>
         } />
         <Route path="profile" element={
           <ProtectedRoute><Profile /></ProtectedRoute>

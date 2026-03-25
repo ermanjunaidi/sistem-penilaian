@@ -222,7 +222,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) register(w http.ResponseWriter, r *http.Request) {
   u := currentUser(r)
-  if u == nil || u.Role != "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mendaftarkan user baru."}); return }
+  if u == nil || (u.Role != "superadmin" && u.Role != "admin") { respond(w, 403, map[string]any{"success": false, "message": "Hanya admin yang dapat mendaftarkan user baru."}); return }
   body, err := readBody(r)
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
   email := strings.TrimSpace(toStr(body["email"]))
@@ -231,6 +231,7 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
   nip := nullIfEmpty(body["nip"])
   role := toStr(body["role"])
   if role == "" { role = "guru" }
+  if role == "superadmin" && u.Role != "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mendaftarkan superadmin baru."}); return }
   if email == "" || password == "" || nama == "" { respond(w, 400, map[string]any{"success": false, "message": "Email, password, dan nama wajib diisi."}); return }
   if !(role == "admin" || role == "wali_kelas" || role == "guru" || role == "wali_murid") { respond(w, 400, map[string]any{"success": false, "message": "Role tidak valid. Role yang bisa dibuat: admin, wali_kelas, guru, wali_murid."}); return }
   exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE email=$1 OR ($2::text IS NOT NULL AND nip=$2) LIMIT 1", email, nip)
@@ -280,9 +281,9 @@ func (a *App) usersRoutes() chi.Router {
   r.With(a.authorize("superadmin")).Post("/action/import", a.importUsers)
   r.With(a.authorizeHierarchy("admin")).Get("/action/template", a.downloadUserTemplate)
   r.With(a.authorizeHierarchy("admin")).Get("/{id}", a.getUser)
-  r.With(a.authorize("superadmin")).Post("/", a.createUser)
+  r.With(a.authorizeHierarchy("admin")).Post("/", a.createUser)
   r.With(a.authorizeHierarchy("admin")).Put("/{id}", a.updateUser)
-  r.With(a.authorize("superadmin")).Delete("/{id}", a.deleteUser)
+  r.With(a.authorizeHierarchy("admin")).Delete("/{id}", a.deleteUser)
   r.With(a.authorizeHierarchy("admin")).Put("/{id}/reset-password", a.resetPassword)
   return r
 }
@@ -543,7 +544,13 @@ func (a *App) deleteUser(w http.ResponseWriter, r *http.Request) {
   id := chi.URLParam(r, "id")
   row, _ := a.one(r.Context(), "SELECT id,role FROM users WHERE id=$1", id)
   if row == nil { respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."}); return }
-  if toStr(row["role"]) == "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Tidak dapat menghapus user superadmin."}); return }
+  
+  actor := currentUser(r)
+  targetRole := toStr(row["role"])
+  
+  if targetRole == "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Tidak dapat menghapus user superadmin."}); return }
+  if targetRole == "admin" && actor.Role != "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat menghapus admin lain."}); return }
+
   _, err := a.db.Exec(r.Context(), "DELETE FROM users WHERE id=$1", id)
   if err != nil { serverErr(w, err); return }
   respond(w, 200, map[string]any{"success": true, "message": "User berhasil dihapus."})

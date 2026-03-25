@@ -491,11 +491,13 @@ export default function ManajemenUser() {
                       onChange={handleChange}
                       required
                     >
-                      {ROLE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
+                      {ROLE_OPTIONS
+                        .filter(option => option.value !== 'superadmin' || currentUser.role === 'superadmin')
+                        .map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                     </select>
                   </div>
                   <div className="form-group">
