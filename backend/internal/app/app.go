@@ -524,11 +524,43 @@ func (a *App) updateUser(w http.ResponseWriter, r *http.Request) {
   body, err := readBody(r)
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
   actor := currentUser(r)
+  
+  // Ambil data user yang akan diupdate untuk pengecekan
+  old, err := a.one(r.Context(), "SELECT id, role, email, nip FROM users WHERE id=$1", id)
+  if err != nil || old == nil { respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."}); return }
+
   if toStr(body["role"]) == "superadmin" && (actor == nil || actor.Role != "superadmin") {
     respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mengubah role ke superadmin."}); return
   }
 
-  _, err = a.db.Exec(r.Context(), "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), email=COALESCE(NULLIF($2,''),email), nip=COALESCE(NULLIF($3,''),nip), role=COALESCE(NULLIF($4,''),role), status=COALESCE(NULLIF($5,''),status), telepon=COALESCE(NULLIF($6,''),telepon), alamat=COALESCE(NULLIF($7,''),alamat), updated_at=NOW() WHERE id=$8", toStr(body["nama"]), toStr(body["email"]), toStr(body["nip"]), toStr(body["role"]), toStr(body["status"]), toStr(body["telepon"]), toStr(body["alamat"]), id)
+  email := strings.TrimSpace(toStr(body["email"]))
+  nip := strings.TrimSpace(toStr(body["nip"]))
+
+  // Cek apakah email sudah digunakan oleh user lain
+  if email != "" && email != toStr(old["email"]) {
+    exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE email=$1 AND id!=$2 LIMIT 1", email, id)
+    if exists != nil { respond(w, 400, map[string]any{"success": false, "message": "Email sudah digunakan oleh user lain."}); return }
+  }
+
+  // Cek apakah NIP sudah digunakan oleh user lain
+  if nip != "" && nip != toStr(old["nip"]) {
+    exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE nip=$1 AND id!=$2 LIMIT 1", nip, id)
+    if exists != nil { respond(w, 400, map[string]any{"success": false, "message": "NIP sudah digunakan oleh user lain."}); return }
+  }
+
+  _, err = a.db.Exec(r.Context(), `
+    UPDATE users SET 
+      nama=COALESCE(NULLIF($1,''), nama), 
+      email=COALESCE(NULLIF($2,''), email), 
+      nip=NULLIF($3,''), 
+      role=COALESCE(NULLIF($4,''), role), 
+      status=COALESCE(NULLIF($5,''), status), 
+      telepon=$6, 
+      alamat=$7, 
+      updated_at=NOW() 
+    WHERE id=$8`, 
+    toStr(body["nama"]), email, nip, toStr(body["role"]), toStr(body["status"]), toStr(body["telepon"]), toStr(body["alamat"]), id)
+  
   if err != nil { serverErr(w, err); return }
   respond(w, 200, map[string]any{"success": true, "message": "User berhasil diperbarui."})
 }
@@ -812,16 +844,23 @@ func (a *App) many(ctx context.Context, q string, args ...any) ([]map[string]any
 }
 
 func (a *App) one(ctx context.Context, q string, args ...any) (map[string]any, error) {
-  wrap := fmt.Sprintf("SELECT row_to_json(t)::text FROM (%s) t LIMIT 1", q)
-  var raw *string
-  if err := a.db.QueryRow(ctx, wrap, args...).Scan(&raw); err != nil {
-    if strings.Contains(err.Error(), "no rows") { return nil, nil }
-    return nil, err
+  rows, err := a.db.Query(ctx, q, args...)
+  if err != nil { return nil, err }
+  defer rows.Close()
+
+  if !rows.Next() {
+    return nil, rows.Err()
   }
-  if raw == nil { return nil, nil }
-  out := map[string]any{}
-  if err := json.Unmarshal([]byte(*raw), &out); err != nil { return nil, err }
-  return out, nil
+
+  values, err := rows.Values()
+  if err != nil { return nil, err }
+
+  fields := rows.FieldDescriptions()
+  out := make(map[string]any, len(fields))
+  for i, field := range fields {
+    out[string(field.Name)] = normalizeDBValue(values[i])
+  }
+  return out, rows.Err()
 }
 
 func readBody(r *http.Request) (map[string]any, error) {
@@ -852,6 +891,15 @@ func toStr(v any) string {
   case float64: return strconv.FormatFloat(t, 'f', -1, 64)
   case bool: if t { return "true" }; return "false"
   default: return fmt.Sprintf("%v", v)
+  }
+}
+
+func normalizeDBValue(v any) any {
+  switch t := v.(type) {
+  case []byte:
+    return string(t)
+  default:
+    return v
   }
 }
 

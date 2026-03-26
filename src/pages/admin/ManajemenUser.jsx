@@ -15,6 +15,7 @@ const INITIAL_FORM = {
 };
 
 const ROLE_OPTIONS = [
+  { value: 'superadmin', label: 'Superadmin' },
   { value: 'admin', label: 'Admin' },
   { value: 'wali_kelas', label: 'Wali Kelas' },
   { value: 'guru', label: 'Guru' },
@@ -187,22 +188,33 @@ export default function ManajemenUser() {
     setSuccessMessage('');
 
     try {
+      const payload = {
+        nama: formData.nama.trim(),
+        email: formData.email.trim(),
+        nip: formData.nip.trim(),
+        password: formData.password,
+        role: formData.role,
+        telepon: formData.telepon.trim(),
+        alamat: formData.alamat.trim(),
+      };
+
       if (editingUser) {
         await usersAPI.update(editingUser.id, {
-          nama: formData.nama,
-          email: formData.email,
-          nip: formData.nip,
-          role: formData.role,
-          telepon: formData.telepon,
-          alamat: formData.alamat,
+          nama: payload.nama,
+          email: payload.email,
+          nip: payload.nip,
+          role: payload.role,
+          telepon: payload.telepon,
+          alamat: payload.alamat,
         });
-        setSuccessMessage('User berhasil diperbarui.');
       } else {
-        await usersAPI.create(formData);
-        setSuccessMessage('User berhasil dibuat.');
+        await usersAPI.create(payload);
       }
-      resetForm();
+
       await fetchUsers();
+      setShowModal(false);
+      resetForm();
+      setSuccessMessage(editingUser ? 'User berhasil diperbarui.' : 'User berhasil dibuat.');
     } catch (err) {
       setError(err.message || (editingUser ? 'Gagal memperbarui user.' : 'Gagal membuat user.'));
     } finally {
