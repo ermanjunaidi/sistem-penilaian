@@ -6,6 +6,7 @@ const pageTitles = {
   '/dashboard': 'Informasi Umum',
   '/dashboard/data-sekolah': 'Data Sekolah',
   '/dashboard/manajemen-user': 'Manajemen User',
+  '/dashboard/data-kelas': 'Data Kelas',
   '/dashboard/data-siswa': 'Data Siswa',
   '/dashboard/mata-pelajaran': 'Mata Pelajaran',
   '/dashboard/intrakurikuler': 'Intrakurikuler',

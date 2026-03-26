@@ -1,40 +1,82 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Plus, Edit, Trash2, Search, UserPlus, FileDown, Upload, FileSpreadsheet } from 'lucide-react';
+import { siswaAPI } from '../../services/api';
+import { Plus, Edit, Trash2, Search, UserPlus, FileDown, Upload, FileSpreadsheet, School } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import AddDataMenu from '../../components/common/AddDataMenu';
 
-const KELAS_OPTIONS = ['7A', '7B', '8A', '8B', '9A', '9B'];
+const INITIAL_FORM = {
+  nis: '',
+  nisn: '',
+  nama: '',
+  tempatLahir: '',
+  tanggalLahir: '',
+  jenisKelamin: 'L',
+  agama: '',
+  alamat: '',
+  namaOrtu: '',
+  teleponOrtu: '',
+  tanggalMasuk: '',
+  kelas: '',
+  status: 'Aktif',
+};
 
 export default function DataSiswa() {
-  const { dataSiswa, setDataSiswa, generateId } = useApp();
+  const { dataSiswa, refreshDataSiswa, dataKelas } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingSiswa, setEditingSiswa] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedKelas, setSelectedKelas] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState([]);
-  const [formData, setFormData] = useState({
-    nis: '',
-    nisn: '',
-    nama: '',
-    tempatLahir: '',
-    tanggalLahir: '',
-    jenisKelamin: 'L',
-    agama: '',
-    alamat: '',
-    namaOrtu: '',
-    teleponOrtu: '',
-    tanggalMasuk: '',
-    kelas: ''
-  });
+  const [formData, setFormData] = useState(INITIAL_FORM);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const filteredSiswa = dataSiswa.filter(siswa => 
-    siswa.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    siswa.nisn.includes(searchTerm) ||
-    siswa.nis.includes(searchTerm) ||
-    siswa.kelas.toLowerCase().includes(searchTerm.toLowerCase())
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        await refreshDataSiswa();
+      } catch (err) {
+        setError(err.message || 'Gagal memuat data siswa.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [refreshDataSiswa]);
+
+  const kelasOptions = useMemo(
+    () => [...dataKelas].sort((a, b) => a.nama.localeCompare(b.nama, 'id-ID')),
+    [dataKelas]
   );
+
+  const filteredSiswa = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+
+    return [...dataSiswa]
+      .filter((siswa) => !selectedKelas || siswa.kelas === selectedKelas)
+      .filter((siswa) => {
+        if (!keyword) return true;
+        return (
+          siswa.nama?.toLowerCase().includes(keyword) ||
+          siswa.nisn?.includes(searchTerm) ||
+          (siswa.nis || '').includes(searchTerm) ||
+          (siswa.kelas || '').toLowerCase().includes(keyword)
+        );
+      })
+      .sort((a, b) => {
+        const kelasCompare = (a.kelas || '').localeCompare(b.kelas || '', 'id-ID');
+        if (kelasCompare !== 0) return kelasCompare;
+        return (a.nama || '').localeCompare(b.nama || '', 'id-ID');
+      });
+  }, [dataSiswa, searchTerm, selectedKelas]);
 
   const {
     currentPage,
@@ -59,61 +101,101 @@ export default function DataSiswa() {
   } = usePagination(importData, 5);
 
   const handleOpenModal = (siswa = null) => {
+    if (kelasOptions.length === 0) {
+      window.alert('Buat data kelas terlebih dahulu sebelum menambahkan siswa.');
+      return;
+    }
+
     if (siswa) {
       setEditingSiswa(siswa);
-      setFormData(siswa);
+      setFormData({ ...INITIAL_FORM, ...siswa, status: siswa.status || 'Aktif' });
     } else {
       setEditingSiswa(null);
       setFormData({
-        nis: '',
-        nisn: '',
-        nama: '',
-        tempatLahir: '',
-        tanggalLahir: '',
-        jenisKelamin: 'L',
-        agama: '',
-        alamat: '',
-        namaOrtu: '',
-        teleponOrtu: '',
-        tanggalMasuk: '',
-        kelas: ''
+        ...INITIAL_FORM,
+        kelas: selectedKelas || kelasOptions[0]?.nama || '',
       });
     }
+    setError('');
+    setSuccessMessage('');
     setShowModal(true);
   };
 
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingSiswa(null);
+    setFormData(INITIAL_FORM);
+    setError('');
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingSiswa) {
-      setDataSiswa(prev => prev.map(s => s.id === editingSiswa.id ? { ...formData, id: s.id } : s));
-    } else {
-      setDataSiswa(prev => [...prev, { ...formData, id: generateId() }]);
+
+    if (!kelasOptions.some((kelas) => kelas.nama === formData.kelas)) {
+      setError('Kelas harus dipilih dari data kelas yang sudah dibuat.');
+      return;
     }
-    handleCloseModal();
+
+    const payload = {
+      nis: formData.nis.trim(),
+      nisn: formData.nisn.trim(),
+      nama: formData.nama.trim(),
+      tempatLahir: formData.tempatLahir.trim(),
+      tanggalLahir: formData.tanggalLahir,
+      jenisKelamin: formData.jenisKelamin,
+      agama: formData.agama.trim(),
+      alamat: formData.alamat.trim(),
+      namaOrtu: formData.namaOrtu.trim(),
+      teleponOrtu: formData.teleponOrtu.trim(),
+      tanggalMasuk: formData.tanggalMasuk,
+      kelas: formData.kelas,
+      status: formData.status,
+    };
+
+    setSubmitting(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      if (editingSiswa) {
+        await siswaAPI.update(editingSiswa.id, payload);
+      } else {
+        await siswaAPI.create(payload);
+      }
+      await refreshDataSiswa();
+      setSuccessMessage(editingSiswa ? 'Data siswa berhasil diperbarui.' : 'Data siswa berhasil ditambahkan.');
+      handleCloseModal();
+    } catch (err) {
+      setError(err.message || 'Gagal menyimpan data siswa.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus data siswa ini?')) {
-      setDataSiswa(prev => prev.filter(s => s.id !== id));
+  const handleDelete = async (id) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus data siswa ini?')) return;
+
+    setError('');
+    setSuccessMessage('');
+    try {
+      await siswaAPI.delete(id);
+      await refreshDataSiswa();
+      setSuccessMessage('Data siswa berhasil dihapus.');
+    } catch (err) {
+      setError(err.message || 'Gagal menghapus data siswa.');
     }
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setError('');
   };
 
-  // Export to Excel
   const handleExport = () => {
     const headers = [
-      'No', 'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir', 
-      'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua', 
-      'Telepon Orang Tua', 'Tanggal Masuk', 'Kelas'
+      'No', 'Kelas', 'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
+      'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua',
+      'Telepon Orang Tua', 'Tanggal Masuk', 'Status'
     ];
 
     const worksheetData = [headers];
@@ -121,6 +203,7 @@ export default function DataSiswa() {
     filteredSiswa.forEach((siswa, index) => {
       worksheetData.push([
         index + 1,
+        siswa.kelas || '',
         siswa.nis || '',
         siswa.nisn || '',
         siswa.nama || '',
@@ -132,103 +215,58 @@ export default function DataSiswa() {
         siswa.namaOrtu || '',
         siswa.teleponOrtu || '',
         siswa.tanggalMasuk || '',
-        siswa.kelas || ''
+        siswa.status || 'Aktif',
       ]);
     });
 
-    const ws = XLSX.utils.aoa_to_sheet(worksheetData);
-    
-    // Set column widths
-    ws['!cols'] = [
-      { wch: 5 },  // No
-      { wch: 15 }, // NIS
-      { wch: 15 }, // NISN
-      { wch: 30 }, // Nama
-      { wch: 10 }, // L/P
-      { wch: 20 }, // Tempat Lahir
-      { wch: 15 }, // Tanggal Lahir
-      { wch: 10 }, // Agama
-      { wch: 30 }, // Alamat
-      { wch: 25 }, // Nama Ortu
-      { wch: 15 }, // Telepon
-      { wch: 15 }, // Tgl Masuk
-      { wch: 8 }   // Kelas
-    ];
-
-    // Merge cells for title
-    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }];
-    
-    // Combine title and data
     const wb = XLSX.utils.book_new();
-    
-    // Create formatted worksheet
     const finalData = [
-      ['DATA SISWA - KURIKULUM MERDEKA'],
+      ['DATA SISWA PER KELAS'],
+      [selectedKelas ? `Kelas: ${selectedKelas}` : 'Semua Kelas'],
       [],
       headers,
-      ...worksheetData.slice(1)
+      ...worksheetData.slice(1),
     ];
-    
-    const finalWs = XLSX.utils.aoa_to_sheet(finalData);
-    finalWs['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }];
-    finalWs['!cols'] = ws['!cols'];
-    
-    XLSX.utils.book_append_sheet(wb, finalWs, 'Data Siswa');
-    XLSX.writeFile(wb, `Data_Siswa_${new Date().toISOString().split('T')[0]}.xlsx`);
+    const ws = XLSX.utils.aoa_to_sheet(finalData);
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 13 } },
+    ];
+    XLSX.utils.book_append_sheet(wb, ws, 'Data Siswa');
+    XLSX.writeFile(wb, `Data_Siswa_${selectedKelas || 'Semua_Kelas'}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // Download Excel Template
   const handleDownloadTemplate = () => {
+    const sampleKelas = kelasOptions[0]?.nama || '7A';
     const headers = [
-      'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir', 
-      'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua', 
+      'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
+      'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua',
       'Telepon Orang Tua', 'Tanggal Masuk', 'Kelas'
     ];
-
     const exampleData = [
-      ['', '', 'Contoh Siswa 1', 'L', 'Jakarta', '2010-01-15', 'Islam', 'Jl. Contoh No. 1', 'Nama Orang Tua 1', '08123456789', '2024-07-01', '7A'],
-      ['', '', 'Contoh Siswa 2', 'P', 'Bandung', '2010-02-20', 'Kristen', 'Jl. Contoh No. 2', 'Nama Orang Tua 2', '08123456780', '2024-07-01', '7B'],
-      ['', '', 'Contoh Siswa 3', 'L', 'Surabaya', '2009-03-10', 'Islam', 'Jl. Contoh No. 3', 'Nama Orang Tua 3', '08123456781', '2023-07-01', '8A'],
+      ['', '', 'Contoh Siswa 1', 'L', 'Jakarta', '2010-01-15', 'Islam', 'Jl. Contoh No. 1', 'Nama Orang Tua 1', '08123456789', '2024-07-01', sampleKelas],
+      ['', '', 'Contoh Siswa 2', 'P', 'Bandung', '2010-02-20', 'Kristen', 'Jl. Contoh No. 2', 'Nama Orang Tua 2', '08123456780', '2024-07-01', sampleKelas],
     ];
-
     const wsData = [
       ['TEMPLATE IMPORT DATA SISWA'],
-      ['KURIKULUM MERDEKA'],
+      ['Kelas harus sudah dibuat di menu Data Kelas'],
       [],
       ['Keterangan:'],
-      ['- L/P: Isi dengan L (Laki-laki) atau P (Perempuan)'],
-      ['- Tanggal Lahir & Tanggal Masuk: Format YYYY-MM-DD (contoh: 2010-01-15)'],
-      ['- Agama: Islam, Kristen, Katolik, Hindu, Buddha, atau Konghucu'],
-      ['- Kelas: 7A, 7B, 8A, 8B, 9A, atau 9B'],
-      ['- Kolom yang wajib diisi: NISN, Nama Lengkap, L/P, Nama Orang Tua'],
+      ['- L/P: Isi dengan L atau P'],
+      ['- Tanggal: gunakan format YYYY-MM-DD'],
+      ['- Kelas: wajib sama dengan nama kelas di menu Data Kelas'],
+      ['- Kolom wajib: NISN, Nama Lengkap, L/P, Nama Orang Tua, Kelas'],
       [],
       headers,
-      ...exampleData
+      ...exampleData,
     ];
-
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 11 } },
-      { s: { r: 3, c: 0 }, e: { r: 3, c: 11 } },
-      { s: { r: 4, c: 0 }, e: { r: 4, c: 11 } },
-      { s: { r: 5, c: 0 }, e: { r: 5, c: 11 } },
-      { s: { r: 6, c: 0 }, e: { r: 6, c: 11 } },
-      { s: { r: 7, c: 0 }, e: { r: 7, c: 11 } },
-      { s: { r: 8, c: 0 }, e: { r: 8, c: 11 } }
-    ];
-    ws['!cols'] = [
-      { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 8 },
-      { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 30 },
-      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 8 }
-    ];
-
+    XLSX.utils.book_append_sheet(XLSX.utils.book_new(), ws, 'Template');
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Template');
     XLSX.writeFile(wb, 'Template_Import_Data_Siswa.xlsx');
   };
 
-  // Import from Excel
   const handleFileImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -242,7 +280,6 @@ export default function DataSiswa() {
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-        // Find the header row (skip title and info rows)
         let headerRowIndex = 0;
         for (let i = 0; i < Math.min(15, jsonData.length); i++) {
           if (jsonData[i] && jsonData[i].includes('Nama Lengkap')) {
@@ -252,11 +289,9 @@ export default function DataSiswa() {
         }
 
         const dataRows = jsonData.slice(headerRowIndex + 1);
-
         const parsedData = dataRows
-          .filter(row => row[2] || row[1]) // Filter empty rows (check Nama or NISN)
+          .filter((row) => row[2] || row[1])
           .map((row) => ({
-            id: generateId(),
             nis: row[0] || '',
             nisn: row[1] || '',
             nama: row[2] || '',
@@ -268,12 +303,13 @@ export default function DataSiswa() {
             namaOrtu: row[8] || '',
             teleponOrtu: row[9] || '',
             tanggalMasuk: formatDate(row[10]),
-            kelas: row[11] || ''
+            kelas: row[11] || '',
+            status: 'Aktif',
           }));
 
         setImportData(parsedData);
-      } catch (error) {
-        alert('Error membaca file Excel: ' + error.message);
+      } catch (err) {
+        window.alert(`Error membaca file Excel: ${err.message}`);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -281,22 +317,38 @@ export default function DataSiswa() {
 
   const formatDate = (date) => {
     if (!date) return '';
-    if (date instanceof Date) {
-      return date.toISOString().split('T')[0];
-    }
+    if (date instanceof Date) return date.toISOString().split('T')[0];
     return date;
   };
 
-  const confirmImport = () => {
+  const confirmImport = async () => {
     if (importData.length === 0) {
-      alert('Tidak ada data untuk diimport');
+      window.alert('Tidak ada data untuk diimport');
       return;
     }
-    
-    setDataSiswa(prev => [...prev, ...importData]);
-    setImportData([]);
-    setShowImportModal(false);
-    alert(`Berhasil mengimport ${importData.length} data siswa`);
+
+    const invalidKelas = importData.filter(
+      (siswa) => !kelasOptions.some((kelas) => kelas.nama === siswa.kelas)
+    );
+    if (invalidKelas.length > 0) {
+      window.alert(`Ada ${invalidKelas.length} data siswa dengan kelas yang belum dibuat.`);
+      return;
+    }
+
+    setSubmitting(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      await siswaAPI.bulkImport(importData);
+      await refreshDataSiswa();
+      setImportData([]);
+      setShowImportModal(false);
+      setSuccessMessage(`Berhasil mengimport ${importData.length} data siswa.`);
+    } catch (err) {
+      setError(err.message || 'Gagal mengimport data siswa.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -304,22 +356,47 @@ export default function DataSiswa() {
       <div className="page-header">
         <h1 className="page-title">Data Siswa</h1>
         <div className="flex gap-1" style={{ flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" onClick={handleDownloadTemplate}>
-            <FileSpreadsheet size={18} />
-            Download Template
-          </button>
-          <button className="btn btn-secondary" onClick={handleExport}>
-            <FileDown size={18} />
-            Export Excel
-          </button>
-          <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
-            <Upload size={18} />
-            Import Excel
-          </button>
-          <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-            <Plus size={18} />
-            Tambah Siswa
-          </button>
+          <AddDataMenu
+            label="Tambah Data"
+            disabled={loading || submitting}
+            actions={[
+              { label: 'Tambah Siswa', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
+              { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
+              { label: 'Export Excel', icon: <FileDown size={18} />, onClick: handleExport },
+              { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
+            ]}
+          />
+        </div>
+      </div>
+
+      {successMessage && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem' }}>
+          {successMessage}
+        </div>
+      )}
+      {error && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem' }}>
+          {error}
+        </div>
+      )}
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header">
+          <h3 className="card-title">
+            <School size={18} style={{ marginRight: 8, verticalAlign: 'middle' }} />
+            Filter Kelas
+          </h3>
+        </div>
+        <div style={{ padding: '20px 24px', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select className="form-select" value={selectedKelas} onChange={(e) => { setSelectedKelas(e.target.value); setCurrentPage(1); }} style={{ maxWidth: 260 }}>
+            <option value="">Semua Kelas</option>
+            {kelasOptions.map((kelas) => (
+              <option key={kelas.id} value={kelas.nama}>{kelas.nama}</option>
+            ))}
+          </select>
+          <div style={{ color: '#64748b', fontSize: '0.875rem' }}>
+            {selectedKelas ? `Menampilkan siswa di kelas ${selectedKelas}` : 'Pilih kelas untuk melihat nama anak per kelas'}
+          </div>
         </div>
       </div>
 
@@ -333,10 +410,7 @@ export default function DataSiswa() {
               className="form-input"
               placeholder="Cari siswa..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
+              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
               style={{ width: 250 }}
             />
           </div>
@@ -357,12 +431,14 @@ export default function DataSiswa() {
               </tr>
             </thead>
             <tbody>
-              {filteredSiswa.length === 0 ? (
+              {loading ? (
+                <tr><td colSpan="8" className="text-center">Memuat data siswa...</td></tr>
+              ) : filteredSiswa.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="text-center">
                     <div className="empty-state">
                       <UserPlus size={48} className="empty-state-icon" />
-                      <p>Belum ada data siswa. Klik "Tambah Siswa" atau "Import Excel" untuk menambahkan.</p>
+                      <p>{kelasOptions.length === 0 ? 'Belum ada data kelas. Tambahkan kelas terlebih dahulu.' : 'Belum ada data siswa pada filter ini.'}</p>
                     </div>
                   </td>
                 </tr>
@@ -374,16 +450,12 @@ export default function DataSiswa() {
                     <td data-label="NISN">{siswa.nisn}</td>
                     <td data-label="Nama Siswa"><strong>{siswa.nama}</strong></td>
                     <td data-label="L/P">{siswa.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'}</td>
-                    <td data-label="Tanggal Lahir">{siswa.tanggalLahir}</td>
+                    <td data-label="Tanggal Lahir">{siswa.tanggalLahir || '-'}</td>
                     <td data-label="Nama Orang Tua">{siswa.namaOrtu}</td>
                     <td data-label="Aksi">
                       <div className="actions">
-                        <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(siswa)}>
-                          <Edit size={16} />
-                        </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(siswa.id)}>
-                          <Trash2 size={16} />
-                        </button>
+                        <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(siswa)}><Edit size={16} /></button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(siswa.id)}><Trash2 size={16} /></button>
                       </div>
                     </td>
                   </tr>
@@ -392,6 +464,7 @@ export default function DataSiswa() {
             </tbody>
           </table>
         </div>
+
         <Pagination
           totalItems={totalItems}
           currentPage={currentPage}
@@ -409,9 +482,21 @@ export default function DataSiswa() {
               <h3 className="modal-title">{editingSiswa ? 'Edit Data Siswa' : 'Tambah Siswa Baru'}</h3>
               <button className="btn btn-sm btn-secondary" onClick={handleCloseModal}>×</button>
             </div>
+            {error && (
+              <div style={{ margin: '16px 24px 0', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px 16px', borderRadius: 8, fontSize: '0.875rem' }}>
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
                 <div className="form-grid">
+                  <div className="form-group">
+                    <label className="form-label">Kelas *</label>
+                    <select name="kelas" className="form-select" value={formData.kelas} onChange={handleChange} required>
+                      <option value="">Pilih Kelas</option>
+                      {kelasOptions.map((kelas) => <option key={kelas.id} value={kelas.nama}>{kelas.nama}</option>)}
+                    </select>
+                  </div>
                   <div className="form-group">
                     <label className="form-label">NIS</label>
                     <input type="text" name="nis" className="form-input" value={formData.nis} onChange={handleChange} />
@@ -451,6 +536,15 @@ export default function DataSiswa() {
                       <option value="Konghucu">Konghucu</option>
                     </select>
                   </div>
+                  <div className="form-group">
+                    <label className="form-label">Status</label>
+                    <select name="status" className="form-select" value={formData.status} onChange={handleChange}>
+                      <option value="Aktif">Aktif</option>
+                      <option value="Lulus">Lulus</option>
+                      <option value="Pindah">Pindah</option>
+                      <option value="Drop Out">Drop Out</option>
+                    </select>
+                  </div>
                   <div className="form-group full-width">
                     <label className="form-label">Alamat</label>
                     <textarea name="alamat" className="form-textarea" value={formData.alamat} onChange={handleChange} />
@@ -467,20 +561,11 @@ export default function DataSiswa() {
                     <label className="form-label">Tanggal Masuk</label>
                     <input type="date" name="tanggalMasuk" className="form-input" value={formData.tanggalMasuk} onChange={handleChange} />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Kelas</label>
-                    <select name="kelas" className="form-select" value={formData.kelas} onChange={handleChange}>
-                      <option value="">Pilih Kelas</option>
-                      {KELAS_OPTIONS.map(kelas => (
-                        <option key={kelas} value={kelas}>{kelas}</option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingSiswa ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Menyimpan...' : editingSiswa ? 'Update' : 'Simpan'}</button>
               </div>
             </form>
           </div>
@@ -497,37 +582,24 @@ export default function DataSiswa() {
             <div className="modal-body">
               <div className="form-group mb-2">
                 <label className="form-label">Pilih File Excel</label>
-                <input 
-                  type="file" 
-                  accept=".xlsx,.xls" 
-                  onChange={handleFileImport}
-                  className="form-input"
-                />
+                <input type="file" accept=".xlsx,.xls" onChange={handleFileImport} className="form-input" />
                 <p style={{ fontSize: '0.8125rem', color: '#64748b', marginTop: '8px' }}>
                   <FileSpreadsheet size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
-                  Download template terlebih dahulu untuk format yang benar
+                  Pastikan nama kelas di file sama persis dengan data pada menu Data Kelas
                 </p>
               </div>
 
               {importData.length > 0 && (
                 <div>
-                  <h4 style={{ marginBottom: '12px', fontSize: '0.9375rem' }}>
-                    Preview Data ({importData.length} siswa):
-                  </h4>
+                  <h4 style={{ marginBottom: '12px', fontSize: '0.9375rem' }}>Preview Data ({importData.length} siswa):</h4>
                   <div className="table-container mobile-card-table" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                     <table className="table">
                       <thead>
-                        <tr>
-                          <th>No</th>
-                          <th>NISN</th>
-                          <th>Nama</th>
-                          <th>L/P</th>
-                          <th>Kelas</th>
-                        </tr>
+                        <tr><th>No</th><th>NISN</th><th>Nama</th><th>L/P</th><th>Kelas</th></tr>
                       </thead>
                       <tbody>
                         {paginatedImportData.map((siswa, index) => (
-                          <tr key={index}>
+                          <tr key={`${siswa.nisn}-${index}`}>
                             <td data-label="No">{importStartIndex + index + 1}</td>
                             <td data-label="NISN">{siswa.nisn}</td>
                             <td data-label="Nama">{siswa.nama}</td>
@@ -550,21 +622,10 @@ export default function DataSiswa() {
               )}
             </div>
             <div className="modal-footer">
-              <button 
-                type="button" 
-                className="btn btn-secondary" 
-                onClick={() => { setShowImportModal(false); setImportData([]); }}
-              >
-                Batal
-              </button>
-              <button 
-                type="button" 
-                className="btn btn-primary" 
-                onClick={confirmImport}
-                disabled={importData.length === 0}
-              >
+              <button type="button" className="btn btn-secondary" onClick={() => { setShowImportModal(false); setImportData([]); }}>Batal</button>
+              <button type="button" className="btn btn-primary" onClick={confirmImport} disabled={importData.length === 0 || submitting}>
                 <Upload size={16} />
-                Import {importData.length > 0 && `(${importData.length} Siswa)`}
+                {submitting ? 'Mengimport...' : `Import${importData.length > 0 ? ` (${importData.length} Siswa)` : ''}`}
               </button>
             </div>
           </div>

@@ -12,6 +12,7 @@ const menuGroups = [
       { path: '/dashboard', label: 'Informasi Umum', icon: Home },
       { path: '/dashboard/data-sekolah', label: 'Data Sekolah', icon: School },
       { path: '/dashboard/manajemen-user', label: 'Manajemen User', icon: Settings },
+      { path: '/dashboard/data-kelas', label: 'Data Kelas', icon: School },
       { path: '/dashboard/data-siswa', label: 'Data Siswa', icon: Users },
       { path: '/dashboard/mata-pelajaran', label: 'Mata Pelajaran', icon: BookOpen },
     ]

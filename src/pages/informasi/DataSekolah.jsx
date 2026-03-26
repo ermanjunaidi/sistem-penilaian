@@ -1,12 +1,58 @@
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { sekolahAPI } from '../../services/api';
 import { School, Phone, Mail, Globe, MapPin } from 'lucide-react';
 
 export default function DataSekolah() {
   const { dataSekolah, setDataSekolah } = useApp();
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await sekolahAPI.get();
+        if (response?.data) {
+          setDataSekolah((prev) => ({ ...prev, ...response.data }));
+        }
+      } catch (err) {
+        setError(err.message || 'Gagal memuat data sekolah.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [setDataSekolah]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setDataSekolah(prev => ({ ...prev, [name]: value }));
+    setMessage('');
+    setError('');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const response = await sekolahAPI.save(dataSekolah);
+      if (response?.data) {
+        setDataSekolah((prev) => ({ ...prev, ...response.data }));
+      }
+      setMessage(response?.message || 'Data sekolah berhasil disimpan.');
+    } catch (err) {
+      setError(err.message || 'Gagal menyimpan data sekolah.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -15,6 +61,19 @@ export default function DataSekolah() {
         <h1 className="page-title">Data Sekolah</h1>
       </div>
 
+      {message && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem' }}>
+          {message}
+        </div>
+      )}
+
+      {error && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem' }}>
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
       <div className="card">
         <div className="card-header">
           <h3 className="card-title">
@@ -32,6 +91,7 @@ export default function DataSekolah() {
               placeholder="Nama lengkap sekolah"
               value={dataSekolah.namaSekolah}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -43,6 +103,7 @@ export default function DataSekolah() {
               placeholder="Nomor Pokok Sekolah Nasional"
               value={dataSekolah.npsn}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -54,6 +115,7 @@ export default function DataSekolah() {
               placeholder="Nama kepala sekolah"
               value={dataSekolah.kepalaSekolah}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -65,6 +127,7 @@ export default function DataSekolah() {
               placeholder="NIP kepala sekolah"
               value={dataSekolah.nipKepalaSekolah}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
         </div>
@@ -87,6 +150,7 @@ export default function DataSekolah() {
               placeholder="Jalan, nomor, RT/RW"
               value={dataSekolah.alamat}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -97,6 +161,7 @@ export default function DataSekolah() {
               className="form-input"
               value={dataSekolah.kelurahan}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -107,6 +172,7 @@ export default function DataSekolah() {
               className="form-input"
               value={dataSekolah.kecamatan}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -117,6 +183,7 @@ export default function DataSekolah() {
               className="form-input"
               value={dataSekolah.kota}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -127,6 +194,7 @@ export default function DataSekolah() {
               className="form-input"
               value={dataSekolah.provinsi}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -137,6 +205,7 @@ export default function DataSekolah() {
               className="form-input"
               value={dataSekolah.kodePos}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
         </div>
@@ -159,6 +228,7 @@ export default function DataSekolah() {
               placeholder="Nomor telepon sekolah"
               value={dataSekolah.telepon}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -173,6 +243,7 @@ export default function DataSekolah() {
               placeholder="Email sekolah"
               value={dataSekolah.email}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
           <div className="form-group">
@@ -187,10 +258,20 @@ export default function DataSekolah() {
               placeholder="Website sekolah"
               value={dataSekolah.website}
               onChange={handleChange}
+              disabled={loading || saving}
             />
           </div>
         </div>
       </div>
+
+      <div className="card">
+        <div style={{ padding: '20px 24px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="submit" className="btn btn-primary" disabled={loading || saving}>
+            {saving ? 'Menyimpan...' : 'Simpan Data Sekolah'}
+          </button>
+        </div>
+      </div>
+      </form>
     </div>
   );
 }

@@ -1085,6 +1085,30 @@ body {
   flex-wrap: wrap;
 }
 
+.action-menu {
+  position: relative;
+}
+
+.action-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 240px;
+  background: var(--surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-xl);
+  z-index: 1000;
+  overflow: hidden;
+  animation: dropdownFadeIn 0.2s ease;
+}
+
 .page-title {
   font-size: 1.5rem;
   font-weight: 700;

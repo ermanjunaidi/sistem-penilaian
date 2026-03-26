@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { siswaAPI, mapelAPI } from '../services/api';
 
 const AppContext = createContext();
 
@@ -32,16 +33,16 @@ export const AppProvider = ({ children }) => {
   });
 
   // Data Siswa
-  const [dataSiswa, setDataSiswa] = useState(() => {
-    const saved = localStorage.getItem('dataSiswa');
+  const [dataSiswa, setDataSiswa] = useState([]);
+
+  // Data Kelas
+  const [dataKelas, setDataKelas] = useState(() => {
+    const saved = localStorage.getItem('dataKelas');
     return saved ? JSON.parse(saved) : [];
   });
 
   // Mata Pelajaran
-  const [mataPelajaran, setMataPelajaran] = useState(() => {
-    const saved = localStorage.getItem('mataPelajaran');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [mataPelajaran, setMataPelajaran] = useState([]);
 
   // Ekstrakurikuler
   const [ekstrakurikuler, setEkstrakurikuler] = useState(() => {
@@ -109,8 +110,7 @@ export const AppProvider = ({ children }) => {
 
   // Save to localStorage whenever data changes
   useEffect(() => { localStorage.setItem('dataSekolah', JSON.stringify(dataSekolah)); }, [dataSekolah]);
-  useEffect(() => { localStorage.setItem('dataSiswa', JSON.stringify(dataSiswa)); }, [dataSiswa]);
-  useEffect(() => { localStorage.setItem('mataPelajaran', JSON.stringify(mataPelajaran)); }, [mataPelajaran]);
+  useEffect(() => { localStorage.setItem('dataKelas', JSON.stringify(dataKelas)); }, [dataKelas]);
   useEffect(() => { localStorage.setItem('ekstrakurikuler', JSON.stringify(ekstrakurikuler)); }, [ekstrakurikuler]);
   useEffect(() => { localStorage.setItem('tujuanPembelajaran', JSON.stringify(tujuanPembelajaran)); }, [tujuanPembelajaran]);
   useEffect(() => { localStorage.setItem('lingkupMateri', JSON.stringify(lingkupMateri)); }, [lingkupMateri]);
@@ -121,6 +121,67 @@ export const AppProvider = ({ children }) => {
   useEffect(() => { localStorage.setItem('mutasi', JSON.stringify(mutasi)); }, [mutasi]);
   useEffect(() => { localStorage.setItem('bukuInduk', JSON.stringify(bukuInduk)); }, [bukuInduk]);
   useEffect(() => { localStorage.setItem('informasiUmum', JSON.stringify(informasiUmum)); }, [informasiUmum]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    let active = true;
+    const fetchSiswa = async () => {
+      try {
+        const response = await siswaAPI.getAll();
+        if (active) {
+          setDataSiswa(response.data || []);
+        }
+      } catch {
+        if (active) {
+          setDataSiswa([]);
+        }
+      }
+    };
+
+    fetchSiswa();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    let active = true;
+    const fetchMapel = async () => {
+      try {
+        const response = await mapelAPI.getAll();
+        if (active) {
+          setMataPelajaran((response.data || []).map(normalizeMapel));
+        }
+      } catch {
+        if (active) {
+          setMataPelajaran([]);
+        }
+      }
+    };
+
+    fetchMapel();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const refreshDataSiswa = async (params = {}) => {
+    const response = await siswaAPI.getAll(params);
+    setDataSiswa(response.data || []);
+    return response.data || [];
+  };
+
+  const refreshMataPelajaran = async (params = {}) => {
+    const response = await mapelAPI.getAll(params);
+    const items = (response.data || []).map(normalizeMapel);
+    setMataPelajaran(items);
+    return items;
+  };
 
   // Generate ID helper
   const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -136,9 +197,14 @@ export const AppProvider = ({ children }) => {
       // Data Siswa
       dataSiswa,
       setDataSiswa,
+      refreshDataSiswa,
+      // Data Kelas
+      dataKelas,
+      setDataKelas,
       // Mata Pelajaran
       mataPelajaran,
       setMataPelajaran,
+      refreshMataPelajaran,
       // Ekstrakurikuler
       ekstrakurikuler,
       setEkstrakurikuler,
@@ -168,3 +234,11 @@ export const AppProvider = ({ children }) => {
     </AppContext.Provider>
   );
 };
+
+function normalizeMapel(item) {
+  if (!item) return item;
+  return {
+    ...item,
+    jpPerMinggu: item.jpPerMinggu ?? item.jp_per_minggu ?? '',
+  };
+}

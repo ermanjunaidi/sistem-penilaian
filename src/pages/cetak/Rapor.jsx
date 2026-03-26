@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Printer, FileDown } from 'lucide-react';
 
@@ -15,7 +15,12 @@ export default function Rapor() {
   const [selectedSiswa, setSelectedSiswa] = useState('');
   const printRef = useRef();
 
-  const selectedSiswaData = dataSiswa.find(s => s.id === selectedSiswa);
+  const filteredSiswa = useMemo(() => {
+    if (!informasiUmum.kelas) return dataSiswa;
+    return dataSiswa.filter((siswa) => siswa.kelas === informasiUmum.kelas);
+  }, [dataSiswa, informasiUmum.kelas]);
+
+  const selectedSiswaData = filteredSiswa.find(s => s.id === selectedSiswa) || dataSiswa.find(s => s.id === selectedSiswa);
   
   const siswaNilaiAkhir = selectedSiswa 
     ? nilaiAkhir.filter(n => n.siswaId === selectedSiswa)
@@ -115,8 +120,10 @@ export default function Rapor() {
             style={{ width: 300 }}
           >
             <option value="">Pilih Siswa</option>
-            {dataSiswa.map(siswa => (
-              <option key={siswa.id} value={siswa.id}>{siswa.nama}</option>
+            {filteredSiswa.map(siswa => (
+              <option key={siswa.id} value={siswa.id}>
+                {siswa.nama} {siswa.kelas ? `(${siswa.kelas})` : ''}
+              </option>
             ))}
           </select>
           <button className="btn btn-primary" onClick={handlePrint} disabled={!selectedSiswa}>
@@ -162,7 +169,7 @@ export default function Rapor() {
                   <tr>
                     <td style={{ border: 'none' }}>Kelas</td>
                     <td style={{ border: 'none' }}>:</td>
-                    <td style={{ border: 'none' }}>{informasiUmum.kelas || '-'}</td>
+                    <td style={{ border: 'none' }}>{selectedSiswaData?.kelas || informasiUmum.kelas || '-'}</td>
                   </tr>
                   <tr>
                     <td style={{ border: 'none' }}>Semester</td>

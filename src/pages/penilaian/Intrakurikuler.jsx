@@ -1,4 +1,5 @@
 import { useApp } from '../../context/AppContext';
+import { mapelAPI } from '../../services/api';
 import { Book, Target, FileText, CheckSquare, Edit, Trash2 } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
@@ -6,7 +7,7 @@ import usePagination from '../../hooks/usePagination';
 export default function Intrakurikuler() {
   const {
     mataPelajaran,
-    setMataPelajaran,
+    refreshMataPelajaran,
     tujuanPembelajaran,
     asesmenFormatif,
     asesmenSumatif,
@@ -22,25 +23,32 @@ export default function Intrakurikuler() {
     paginatedData,
   } = usePagination(mataPelajaran);
 
-  const handleEditMapel = (mapel) => {
+  const handleEditMapel = async (mapel) => {
     const namaBaru = window.prompt('Ubah nama mata pelajaran', mapel.nama);
     if (namaBaru === null) return;
 
     const guruBaru = window.prompt('Ubah nama guru pengampu', mapel.guru || '');
     if (guruBaru === null) return;
 
-    setMataPelajaran((prev) =>
-      prev.map((item) =>
-        item.id === mapel.id
-          ? { ...item, nama: namaBaru.trim() || item.nama, guru: guruBaru.trim() }
-          : item
-      )
-    );
+    try {
+      await mapelAPI.update(mapel.id, {
+        nama: namaBaru.trim() || mapel.nama,
+        guru: guruBaru.trim(),
+      });
+      await refreshMataPelajaran();
+    } catch (err) {
+      window.alert(err.message || 'Gagal memperbarui mata pelajaran.');
+    }
   };
 
-  const handleDeleteMapel = (id) => {
+  const handleDeleteMapel = async (id) => {
     if (!window.confirm('Hapus mata pelajaran ini?')) return;
-    setMataPelajaran((prev) => prev.filter((item) => item.id !== id));
+    try {
+      await mapelAPI.delete(id);
+      await refreshMataPelajaran();
+    } catch (err) {
+      window.alert(err.message || 'Gagal menghapus mata pelajaran.');
+    }
   };
 
   return (

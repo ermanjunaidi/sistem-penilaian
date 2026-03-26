@@ -8,6 +8,7 @@ import Profile from './pages/Profile';
 import InformasiUmum from './pages/informasi/InformasiUmum';
 import DataSekolah from './pages/informasi/DataSekolah';
 import DataSiswa from './pages/data/DataSiswa';
+import DataKelas from './pages/data/DataKelas';
 import MataPelajaran from './pages/data/MataPelajaran';
 import Intrakurikuler from './pages/penilaian/Intrakurikuler';
 import Ekstrakurikuler from './pages/penilaian/Ekstrakurikuler';
@@ -75,6 +76,9 @@ function AppRoutes() {
         } />
         <Route path="data-siswa" element={
           <ProtectedRoute allowedRoles={['admin', 'superadmin', 'wali_kelas']}><DataSiswa /></ProtectedRoute>
+        } />
+        <Route path="data-kelas" element={
+          <ProtectedRoute allowedRoles={['admin', 'superadmin', 'wali_kelas']}><DataKelas /></ProtectedRoute>
         } />
         <Route path="mata-pelajaran" element={
           <ProtectedRoute><MataPelajaran /></ProtectedRoute>

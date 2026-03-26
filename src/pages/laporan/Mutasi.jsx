@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { siswaAPI } from '../../services/api';
 import { Plus, Edit, Trash2, UserPlus, FileText } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 
 export default function Mutasi() {
-  const { mutasi, setMutasi, dataSiswa, setDataSiswa, generateId } = useApp();
+  const { mutasi, setMutasi, dataSiswa, refreshDataSiswa, generateId } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({
@@ -46,22 +47,27 @@ export default function Mutasi() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    handleSaveMutasi();
+  };
+
+  const handleSaveMutasi = async () => {
     if (editingItem) {
       setMutasi(prev => prev.map(m => m.id === editingItem.id ? { ...formData, id: m.id } : m));
     } else {
       const newMutasi = { ...formData, id: generateId() };
       setMutasi(prev => [...prev, newMutasi]);
-      
-      // If student is transferring in, add to student data
-      if (formData.jenis === 'Masuk' && formData.siswaId) {
-        const siswa = dataSiswa.find(s => s.id === formData.siswaId);
-        if (siswa && !siswa.statusMutasi) {
-          setDataSiswa(prev => prev.map(s => 
-            s.id === formData.siswaId ? { ...s, statusMutasi: 'Aktif' } : s
-          ));
-        }
+    }
+
+    if (formData.siswaId) {
+      const updatedStatus = formData.jenis === 'Masuk' ? 'Aktif' : 'Pindah';
+      try {
+        await siswaAPI.update(formData.siswaId, { status: updatedStatus });
+        await refreshDataSiswa();
+      } catch (err) {
+        window.alert(err.message || 'Status siswa gagal diperbarui.');
       }
     }
+
     handleCloseModal();
   };
 
@@ -78,7 +84,7 @@ export default function Mutasi() {
 
   const getSiswaName = (id) => {
     const siswa = dataSiswa.find(s => s.id === id);
-    return siswa ? siswa.nama : '-';
+    return siswa ? `${siswa.nama}${siswa.kelas ? ` (${siswa.kelas})` : ''}` : '-';
   };
 
   const {
@@ -225,7 +231,9 @@ export default function Mutasi() {
                     <select name="siswaId" className="form-select" value={formData.siswaId} onChange={handleChange} required>
                       <option value="">Pilih Siswa</option>
                       {dataSiswa.map(siswa => (
-                        <option key={siswa.id} value={siswa.id}>{siswa.nama} ({siswa.nisn})</option>
+                        <option key={siswa.id} value={siswa.id}>
+                          {siswa.nama} ({siswa.nisn}){siswa.kelas ? ` - ${siswa.kelas}` : ''}
+                        </option>
                       ))}
                     </select>
                   </div>

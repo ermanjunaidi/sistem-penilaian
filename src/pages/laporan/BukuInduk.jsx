@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
+import { siswaAPI } from '../../services/api';
 import { Book, Search, FileDown, Plus, Upload, FileSpreadsheet, Edit, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import AddDataMenu from '../../components/common/AddDataMenu';
 
-const KELAS_OPTIONS = ['7A', '7B', '8A', '8B', '9A', '9B'];
 const INITIAL_FORM_DATA = {
   nis: '',
   nisn: '',
@@ -27,17 +28,23 @@ const INITIAL_FORM_DATA = {
 };
 
 export default function BukuInduk() {
-  const { dataSiswa, setDataSiswa, generateId } = useApp();
+  const { dataSiswa, refreshDataSiswa, dataKelas } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
+  const [submitting, setSubmitting] = useState(false);
+
+  const kelasOptions = useMemo(
+    () => [...dataKelas].sort((a, b) => a.nama.localeCompare(b.nama, 'id-ID')),
+    [dataKelas]
+  );
 
   // Sync with dataSiswa - Buku Induk is the master record
   const syncedBukuInduk = useMemo(() => {
     return dataSiswa.map(siswa => ({
       ...siswa,
-      status: siswa.statusMutasi || siswa.status || 'Aktif'
+      status: siswa.status || 'Aktif'
     }));
   }, [dataSiswa]);
 
@@ -60,6 +67,11 @@ export default function BukuInduk() {
   } = usePagination(filteredData);
 
   const handleOpenModal = (item = null) => {
+    if (!item && kelasOptions.length === 0) {
+      window.alert('Buat data kelas terlebih dahulu sebelum menambahkan siswa ke Buku Induk.');
+      return;
+    }
+
     if (item) {
       setEditingItem(item);
       setFormData({
@@ -83,7 +95,10 @@ export default function BukuInduk() {
       });
     } else {
       setEditingItem(null);
-      setFormData(INITIAL_FORM_DATA);
+      setFormData({
+        ...INITIAL_FORM_DATA,
+        kelas: kelasOptions[0]?.nama || '',
+      });
     }
     setShowModal(true);
   };
@@ -96,17 +111,45 @@ export default function BukuInduk() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (editingItem) {
-      setDataSiswa((prev) =>
-        prev.map((item) =>
-          item.id === editingItem.id ? { ...item, ...formData } : item
-        )
-      );
-    } else {
-      const newEntry = { ...formData, id: generateId() };
-      setDataSiswa(prev => [...prev, newEntry]);
+    handleSaveBukuInduk();
+  };
+
+  const handleSaveBukuInduk = async () => {
+    if (!kelasOptions.some((kelas) => kelas.nama === formData.kelas)) {
+      window.alert('Kelas harus dipilih dari data kelas yang sudah dibuat.');
+      return;
     }
-    handleCloseModal();
+
+    const payload = {
+      nis: formData.nis,
+      nisn: formData.nisn,
+      nama: formData.nama,
+      tempatLahir: formData.tempatLahir,
+      tanggalLahir: formData.tanggalLahir,
+      jenisKelamin: formData.jenisKelamin,
+      agama: formData.agama,
+      alamat: formData.alamat,
+      namaOrtu: formData.namaOrtu,
+      teleponOrtu: formData.teleponOrtu,
+      tanggalMasuk: formData.tanggalMasuk,
+      kelas: formData.kelas,
+      status: formData.status,
+    };
+
+    setSubmitting(true);
+    try {
+      if (editingItem) {
+        await siswaAPI.update(editingItem.id, payload);
+      } else {
+        await siswaAPI.create(payload);
+      }
+      await refreshDataSiswa();
+      handleCloseModal();
+    } catch (err) {
+      window.alert(err.message || 'Gagal menyimpan buku induk.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleChange = (e) => {
@@ -166,6 +209,7 @@ export default function BukuInduk() {
 
   // Download Excel Template
   const handleDownloadTemplate = () => {
+    const sampleKelas = kelasOptions[0]?.nama || '7A';
     const headers = [
       'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
       'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua',
@@ -173,8 +217,8 @@ export default function BukuInduk() {
     ];
 
     const exampleData = [
-      ['', '', 'Contoh Siswa 1', 'L', 'Jakarta', '2010-01-15', 'Islam', 'Jl. Contoh No. 1', 'Nama Orang Tua 1', '08123456789', '2024-07-01', '7A'],
-      ['', '', 'Contoh Siswa 2', 'P', 'Bandung', '2010-02-20', 'Kristen', 'Jl. Contoh No. 2', 'Nama Orang Tua 2', '08123456780', '2024-07-01', '7B'],
+      ['', '', 'Contoh Siswa 1', 'L', 'Jakarta', '2010-01-15', 'Islam', 'Jl. Contoh No. 1', 'Nama Orang Tua 1', '08123456789', '2024-07-01', sampleKelas],
+      ['', '', 'Contoh Siswa 2', 'P', 'Bandung', '2010-02-20', 'Kristen', 'Jl. Contoh No. 2', 'Nama Orang Tua 2', '08123456780', '2024-07-01', sampleKelas],
     ];
 
     const wsData = [
@@ -185,7 +229,7 @@ export default function BukuInduk() {
       ['- L/P: Isi dengan L (Laki-laki) atau P (Perempuan)'],
       ['- Tanggal Lahir & Tanggal Masuk: Format YYYY-MM-DD (contoh: 2010-01-15)'],
       ['- Agama: Islam, Kristen, Katolik, Hindu, Buddha, atau Konghucu'],
-      ['- Kelas: 7A, 7B, 8A, 8B, 9A, atau 9B'],
+      ['- Kelas harus sama dengan data di menu Data Kelas'],
       [],
       headers,
       ...exampleData
@@ -284,20 +328,40 @@ export default function BukuInduk() {
     return date;
   };
 
-  const confirmImport = () => {
+  const confirmImport = async () => {
     if (importData.length === 0) {
       alert('Tidak ada data untuk diimport');
       return;
     }
-    setDataSiswa(prev => [...prev, ...importData]);
+
+    const invalidKelas = importData.filter(
+      (siswa) => !kelasOptions.some((kelas) => kelas.nama === siswa.kelas)
+    );
+    if (invalidKelas.length > 0) {
+      window.alert(`Ada ${invalidKelas.length} data dengan kelas yang belum dibuat.`);
+      return;
+    }
+
+    try {
+      await siswaAPI.bulkImport(importData);
+      await refreshDataSiswa();
+    } catch (err) {
+      window.alert(err.message || 'Gagal mengimport buku induk.');
+      return;
+    }
     setImportData([]);
     setShowImportModal(false);
     alert(`Berhasil mengimport ${importData.length} data siswa`);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!window.confirm('Hapus data siswa ini dari Buku Induk?')) return;
-    setDataSiswa((prev) => prev.filter((item) => item.id !== id));
+    try {
+      await siswaAPI.delete(id);
+      await refreshDataSiswa();
+    } catch (err) {
+      window.alert(err.message || 'Gagal menghapus data siswa.');
+    }
   };
 
   return (
@@ -305,22 +369,31 @@ export default function BukuInduk() {
       <div className="page-header">
         <h1 className="page-title">Buku Induk</h1>
         <div className="flex gap-1" style={{ flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary" onClick={handleDownloadTemplate}>
-            <FileSpreadsheet size={18} />
-            Template
-          </button>
-          <button className="btn btn-secondary" onClick={handleExport}>
-            <FileDown size={18} />
-            Export Excel
-          </button>
-          <button className="btn btn-secondary" onClick={() => setShowImportModal(true)}>
-            <Upload size={18} />
-            Import
-          </button>
-          <button className="btn btn-primary" onClick={handleOpenModal}>
-            <Plus size={18} />
-            Tambah Siswa
-          </button>
+          <AddDataMenu
+            label="Tambah Data"
+            actions={[
+              {
+                label: 'Tambah Siswa',
+                icon: <Plus size={18} />,
+                onClick: handleOpenModal,
+              },
+              {
+                label: 'Download Template',
+                icon: <FileSpreadsheet size={18} />,
+                onClick: handleDownloadTemplate,
+              },
+              {
+                label: 'Export Excel',
+                icon: <FileDown size={18} />,
+                onClick: handleExport,
+              },
+              {
+                label: 'Import Data',
+                icon: <Upload size={18} />,
+                onClick: () => setShowImportModal(true),
+              },
+            ]}
+          />
         </div>
       </div>
 
@@ -534,8 +607,8 @@ export default function BukuInduk() {
                     <label className="form-label">Kelas</label>
                     <select name="kelas" className="form-select" value={formData.kelas} onChange={handleChange}>
                       <option value="">Pilih Kelas</option>
-                      {KELAS_OPTIONS.map(kelas => (
-                        <option key={kelas} value={kelas}>{kelas}</option>
+                      {kelasOptions.map((kelas) => (
+                        <option key={kelas.id} value={kelas.nama}>{kelas.nama}</option>
                       ))}
                     </select>
                   </div>
@@ -556,7 +629,7 @@ export default function BukuInduk() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Menyimpan...' : editingItem ? 'Update' : 'Simpan'}</button>
               </div>
             </form>
           </div>

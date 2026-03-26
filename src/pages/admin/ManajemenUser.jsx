@@ -3,6 +3,7 @@ import { Plus, Search, Users, Edit, Trash2, X, Download, FileDown, FileUp } from
 import { usersAPI } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import AddDataMenu from '../../components/common/AddDataMenu';
 
 const INITIAL_FORM = {
   nama: '',
@@ -269,33 +270,39 @@ export default function ManajemenUser() {
       <div className="page-header">
         <h1 className="page-title">Manajemen User</h1>
         <div className="header-actions">
-          <button className="btn btn-secondary" onClick={handleDownloadTemplate} title="Unduh Template (Excel)" disabled={loading}>
-            <Download size={18} />
-            Template
-          </button>
-          {currentUser.role === 'superadmin' && (
-            <>
-              <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()} title="Import dari CSV/Excel" disabled={loading}>
-                <FileUp size={18} />
-                Import
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                style={{ display: 'none' }}
-                accept=".csv,.xlsx"
-                onChange={handleImport}
-              />
-            </>
-          )}
-          <button className="btn btn-secondary" onClick={handleExport} title="Export Data (JSON)" disabled={loading}>
-            <FileDown size={18} />
-            Export
-          </button>
-          <button className="btn btn-primary" onClick={openAddModal} disabled={loading}>
-            <Plus size={18} />
-            Tambah User
-          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            style={{ display: 'none' }}
+            accept=".csv,.xlsx"
+            onChange={handleImport}
+          />
+          <AddDataMenu
+            label="Tambah Data"
+            disabled={loading}
+            actions={[
+              {
+                label: 'Tambah User',
+                icon: <Plus size={18} />,
+                onClick: openAddModal,
+              },
+              {
+                label: 'Download Template',
+                icon: <Download size={18} />,
+                onClick: handleDownloadTemplate,
+              },
+              {
+                label: 'Export Data',
+                icon: <FileDown size={18} />,
+                onClick: handleExport,
+              },
+              currentUser.role === 'superadmin' && {
+                label: 'Import Data',
+                icon: <FileUp size={18} />,
+                onClick: () => fileInputRef.current?.click(),
+              },
+            ]}
+          />
         </div>
       </div>
 

@@ -1,18 +1,21 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, BookOpen, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { mapelAPI } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import AddDataMenu from '../../components/common/AddDataMenu';
 
 export default function MataPelajaran() {
-  const { mataPelajaran, setMataPelajaran, generateId } = useApp();
+  const { mataPelajaran, refreshMataPelajaran } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [importFile, setImportFile] = useState(null);
   const [importPreview, setImportPreview] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [formData, setFormData] = useState({
     kode: '',
     nama: '',
@@ -21,6 +24,21 @@ export default function MataPelajaran() {
     guru: '',
     keterangan: ''
   });
+
+  useEffect(() => {
+    const load = async () => {
+      setIsProcessing(true);
+      setError('');
+      try {
+        await refreshMataPelajaran();
+      } catch (err) {
+        setError(err.message || 'Gagal memuat mata pelajaran.');
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+    load();
+  }, [refreshMataPelajaran]);
 
   const handleOpenModal = (item = null) => {
     if (item) {
@@ -43,21 +61,47 @@ export default function MataPelajaran() {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingItem(null);
+    setError('');
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (editingItem) {
-      setMataPelajaran(prev => prev.map(m => m.id === editingItem.id ? { ...formData, id: m.id } : m));
-    } else {
-      setMataPelajaran(prev => [...prev, { ...formData, id: generateId() }]);
-    }
-    handleCloseModal();
+    handleSaveMapel();
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus mata pelajaran ini?')) {
-      setMataPelajaran(prev => prev.filter(m => m.id !== id));
+  const handleSaveMapel = async () => {
+    setIsProcessing(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      if (editingItem) {
+        await mapelAPI.update(editingItem.id, formData);
+      } else {
+        await mapelAPI.create(formData);
+      }
+      await refreshMataPelajaran();
+      setSuccessMessage(editingItem ? 'Mata pelajaran berhasil diperbarui.' : 'Mata pelajaran berhasil ditambahkan.');
+      handleCloseModal();
+    } catch (err) {
+      setError(err.message || 'Gagal menyimpan mata pelajaran.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Apakah Anda yakin ingin menghapus mata pelajaran ini?')) return;
+    setIsProcessing(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      await mapelAPI.delete(id);
+      await refreshMataPelajaran();
+      setSuccessMessage('Mata pelajaran berhasil dihapus.');
+    } catch (err) {
+      setError(err.message || 'Gagal menghapus mata pelajaran.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -167,8 +211,7 @@ export default function MataPelajaran() {
 
       if (result.success) {
         alert(`Berhasil import ${result.data?.imported || importPreview.length} mata pelajaran!`);
-        // Refresh data - reload from context or API
-        window.location.reload();
+        await refreshMataPelajaran();
       } else {
         alert('Gagal import: ' + result.message);
       }
@@ -207,25 +250,45 @@ export default function MataPelajaran() {
 
   return (
     <div>
+      {successMessage && (
+        <div style={{ background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem' }}>
+          {successMessage}
+        </div>
+      )}
+      {error && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem' }}>
+          {error}
+        </div>
+      )}
       <div className="page-header">
         <h1 className="page-title">Mata Pelajaran</h1>
         <div className="header-actions">
-          <button className="btn btn-secondary" onClick={() => handleDownloadTemplate('xlsx')} title="Download Template Excel">
-            <FileSpreadsheet size={18} />
-            Template
-          </button>
-          <button className="btn btn-secondary" onClick={() => handleExport('json')} title="Export Data">
-            <Download size={18} />
-            Export
-          </button>
-          <button className="btn btn-primary" onClick={handleOpenImportModal} title="Import Data">
-            <Upload size={18} />
-            Import
-          </button>
-          <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-            <Plus size={18} />
-            Tambah Mata Pelajaran
-          </button>
+          <AddDataMenu
+            label="Tambah Data"
+            disabled={isProcessing}
+            actions={[
+              {
+                label: 'Tambah Mata Pelajaran',
+                icon: <Plus size={18} />,
+                onClick: () => handleOpenModal(),
+              },
+              {
+                label: 'Download Template',
+                icon: <FileSpreadsheet size={18} />,
+                onClick: () => handleDownloadTemplate('xlsx'),
+              },
+              {
+                label: 'Export Data',
+                icon: <Download size={18} />,
+                onClick: () => handleExport('json'),
+              },
+              {
+                label: 'Import Data',
+                icon: <Upload size={18} />,
+                onClick: handleOpenImportModal,
+              },
+            ]}
+          />
         </div>
       </div>
 
@@ -303,6 +366,11 @@ export default function MataPelajaran() {
               <h3 className="modal-title">{editingItem ? 'Edit Mata Pelajaran' : 'Tambah Mata Pelajaran Baru'}</h3>
               <button className="btn btn-sm btn-secondary" onClick={handleCloseModal}>×</button>
             </div>
+            {error && (
+              <div style={{ margin: '16px 24px 0', background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', padding: '12px 16px', borderRadius: 8, fontSize: '0.875rem' }}>
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
                 <div className="form-grid">
@@ -338,7 +406,7 @@ export default function MataPelajaran() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={isProcessing}>{isProcessing ? 'Menyimpan...' : editingItem ? 'Update' : 'Simpan'}</button>
               </div>
             </form>
           </div>
