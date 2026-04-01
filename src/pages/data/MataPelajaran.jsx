@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, BookOpen, Download, Upload, FileSpreadsheet } from 'lucide-react';
-import { mapelAPI } from '../../services/api';
+import { mapelAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import AddDataMenu from '../../components/common/AddDataMenu';
@@ -267,7 +267,7 @@ export default function MataPelajaran() {
             label="Tambah Data"
             disabled={isProcessing}
             actions={[
-              {
+              hasPermission('wali_kelas') && {
                 label: 'Tambah Mata Pelajaran',
                 icon: <Plus size={18} />,
                 onClick: () => handleOpenModal(),
@@ -282,12 +282,12 @@ export default function MataPelajaran() {
                 icon: <Download size={18} />,
                 onClick: () => handleExport('json'),
               },
-              {
+              hasPermission('wali_kelas') && {
                 label: 'Import Data',
                 icon: <Upload size={18} />,
                 onClick: handleOpenImportModal,
               },
-            ]}
+            ].filter(Boolean)}
           />
         </div>
       </div>
@@ -335,12 +335,16 @@ export default function MataPelajaran() {
                     <td data-label="Guru">{mapel.guru}</td>
                     <td data-label="Aksi">
                       <div className="actions">
-                        <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(mapel)}>
-                          <Edit size={16} />
-                        </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(mapel.id)}>
-                          <Trash2 size={16} />
-                        </button>
+                        {hasPermission('wali_kelas') && (
+                          <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(mapel)}>
+                            <Edit size={16} />
+                          </button>
+                        )}
+                        {hasPermission('admin') && (
+                          <button className="btn btn-sm btn-danger" onClick={() => handleDelete(mapel.id)}>
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

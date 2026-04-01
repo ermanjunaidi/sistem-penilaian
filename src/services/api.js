@@ -191,24 +191,24 @@ export const siswaAPI = {
 export const mapelAPI = {
   getAll: (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
-    return apiCall(`/mapel/mapel${queryString ? `?${queryString}` : ''}`);
+    return apiCall(`/mapel${queryString ? `?${queryString}` : ''}`);
   },
 
-  getById: (id) => apiCall(`/mapel/mapel/${id}`),
+  getById: (id) => apiCall(`/mapel/${id}`),
 
   create: (data) =>
-    apiCall('/mapel/mapel', {
+    apiCall('/mapel', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
   update: (id, data) =>
-    apiCall(`/mapel/mapel/${id}`, {
+    apiCall(`/mapel/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
 
-  delete: (id) => apiCall(`/mapel/mapel/${id}`, { method: 'DELETE' }),
+  delete: (id) => apiCall(`/mapel/${id}`, { method: 'DELETE' }),
 
   // Export/Import
   export: (format = 'json') =>
