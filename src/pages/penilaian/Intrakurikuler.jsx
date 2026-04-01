@@ -9,6 +9,7 @@ export default function Intrakurikuler() {
     mataPelajaran,
     refreshMataPelajaran,
     tujuanPembelajaran,
+    lingkupMateri,
     asesmenFormatif,
     asesmenSumatif,
   } = useApp();
@@ -162,8 +163,7 @@ export default function Intrakurikuler() {
               Materi pembelajaran yang akan disampaikan
             </p>
             <div style={{ marginTop: 12, fontSize: '1.5rem', fontWeight: 700, color: '#10b981' }}>
-              {/* Placeholder count */}
-              0 Item
+              {lingkupMateri.length} Item
             </div>
           </div>
           <div className="stat-card" style={{ cursor: 'pointer', transition: 'transform 0.2s' }}>

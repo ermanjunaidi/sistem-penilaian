@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { mapelAPI } from '../../services/api';
 import { Plus, Edit, Trash2, Target } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 
 export default function TujuanPembelajaran() {
-  const { tujuanPembelajaran, setTujuanPembelajaran, mataPelajaran, generateId } = useApp();
+  const { tujuanPembelajaran, refreshTujuanPembelajaran, mataPelajaran } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState({ error: '', success: '' });
   const [formData, setFormData] = useState({
     mataPelajaranId: '',
     kode: '',
@@ -38,19 +41,48 @@ export default function TujuanPembelajaran() {
     setEditingItem(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingItem) {
-      setTujuanPembelajaran(prev => prev.map(t => t.id === editingItem.id ? { ...formData, id: t.id } : t));
-    } else {
-      setTujuanPembelajaran(prev => [...prev, { ...formData, id: generateId() }]);
+    setSaving(true);
+    setFeedback({ error: '', success: '' });
+
+    const payload = {
+      mataPelajaranId: formData.mataPelajaranId,
+      kode: formData.kode.trim(),
+      deskripsi: formData.deskripsi.trim(),
+      elemen: formData.elemen.trim(),
+      keterangan: formData.keterangan.trim(),
+    };
+
+    try {
+      if (editingItem) {
+        await mapelAPI.updateTP(editingItem.id, payload);
+      } else {
+        await mapelAPI.createTP(payload);
+      }
+      await refreshTujuanPembelajaran();
+      setFeedback({
+        error: '',
+        success: editingItem ? 'Tujuan pembelajaran berhasil diperbarui.' : 'Tujuan pembelajaran berhasil ditambahkan.',
+      });
+      handleCloseModal();
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal menyimpan tujuan pembelajaran.', success: '' });
+    } finally {
+      setSaving(false);
     }
-    handleCloseModal();
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus tujuan pembelajaran ini?')) {
-      setTujuanPembelajaran(prev => prev.filter(t => t.id !== id));
+      setFeedback({ error: '', success: '' });
+      try {
+        await mapelAPI.deleteTP(id);
+        await refreshTujuanPembelajaran();
+        setFeedback({ error: '', success: 'Tujuan pembelajaran berhasil dihapus.' });
+      } catch (err) {
+        setFeedback({ error: err.message || 'Gagal menghapus tujuan pembelajaran.', success: '' });
+      }
     }
   };
 
@@ -84,6 +116,9 @@ export default function TujuanPembelajaran() {
           Tambah Tujuan Pembelajaran
         </button>
       </div>
+
+      {feedback.error && <div className="alert alert-error">{feedback.error}</div>}
+      {feedback.success && <div className="alert alert-success">{feedback.success}</div>}
 
       <div className="card">
         <div className="card-header">
@@ -214,7 +249,9 @@ export default function TujuanPembelajaran() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Menyimpan...' : editingItem ? 'Update' : 'Simpan'}
+                </button>
               </div>
             </form>
           </div>

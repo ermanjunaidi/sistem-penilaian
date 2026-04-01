@@ -64,7 +64,7 @@ body {
   height: 100vh;
   overflow-y: auto;
   transition: width 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
-  z-index: 1000;
+  z-index: 1001;
   left: 0;
   top: 0;
   overflow-x: hidden;
@@ -154,7 +154,7 @@ body {
     white-space: nowrap;
     margin-left: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 1001;
+    z-index: 1002;
   }
 }
 

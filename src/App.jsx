@@ -75,7 +75,7 @@ function AppRoutes() {
           <ProtectedRoute><DataSekolah /></ProtectedRoute>
         } />
         <Route path="data-siswa" element={
-          <ProtectedRoute allowedRoles={['admin', 'superadmin', 'wali_kelas']}><DataSiswa /></ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin', 'superadmin', 'wali_kelas', 'guru']}><DataSiswa /></ProtectedRoute>
         } />
         <Route path="data-kelas" element={
           <ProtectedRoute allowedRoles={['admin', 'superadmin', 'wali_kelas']}><DataKelas /></ProtectedRoute>

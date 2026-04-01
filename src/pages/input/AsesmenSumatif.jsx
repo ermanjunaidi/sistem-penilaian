@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { penilaianAPI } from '../../services/api';
 import { Plus, Edit, Trash2, ClipboardList } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 
 export default function AsesmenSumatif() {
-  const { asesmenSumatif, setAsesmenSumatif, mataPelajaran, dataSiswa, generateId } = useApp();
+  const { asesmenSumatif, refreshAsesmenSumatif, mataPelajaran, dataSiswa } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState({ error: '', success: '' });
   const [formData, setFormData] = useState({
     mataPelajaranId: '',
     siswaId: '',
@@ -42,19 +45,50 @@ export default function AsesmenSumatif() {
     setEditingItem(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingItem) {
-      setAsesmenSumatif(prev => prev.map(a => a.id === editingItem.id ? { ...formData, id: a.id } : a));
-    } else {
-      setAsesmenSumatif(prev => [...prev, { ...formData, id: generateId() }]);
+    setSaving(true);
+    setFeedback({ error: '', success: '' });
+
+    const payload = {
+      mataPelajaranId: formData.mataPelajaranId,
+      siswaId: formData.siswaId,
+      jenis: formData.jenis,
+      tanggal: formData.tanggal || null,
+      nilai: formData.nilai,
+      kkm: formData.kkm,
+      keterangan: formData.keterangan.trim(),
+    };
+
+    try {
+      if (editingItem) {
+        await penilaianAPI.updateSumatif(editingItem.id, payload);
+      } else {
+        await penilaianAPI.createSumatif(payload);
+      }
+      await refreshAsesmenSumatif();
+      setFeedback({
+        error: '',
+        success: editingItem ? 'Asesmen sumatif berhasil diperbarui.' : 'Asesmen sumatif berhasil ditambahkan.',
+      });
+      handleCloseModal();
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal menyimpan asesmen sumatif.', success: '' });
+    } finally {
+      setSaving(false);
     }
-    handleCloseModal();
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus asesmen sumatif ini?')) {
-      setAsesmenSumatif(prev => prev.filter(a => a.id !== id));
+      setFeedback({ error: '', success: '' });
+      try {
+        await penilaianAPI.deleteSumatif(id);
+        await refreshAsesmenSumatif();
+        setFeedback({ error: '', success: 'Asesmen sumatif berhasil dihapus.' });
+      } catch (err) {
+        setFeedback({ error: err.message || 'Gagal menghapus asesmen sumatif.', success: '' });
+      }
     }
   };
 
@@ -101,6 +135,9 @@ export default function AsesmenSumatif() {
           Tambah Asesmen Sumatif
         </button>
       </div>
+
+      {feedback.error && <div className="alert alert-error">{feedback.error}</div>}
+      {feedback.success && <div className="alert alert-success">{feedback.success}</div>}
 
       <div className="card">
         <div className="card-header">
@@ -259,7 +296,9 @@ export default function AsesmenSumatif() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Menyimpan...' : editingItem ? 'Update' : 'Simpan'}
+                </button>
               </div>
             </form>
           </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { siswaAPI } from '../../services/api';
+import { siswaAPI, hasPermission } from '../../services/api';
 import { Plus, Edit, Trash2, Search, UserPlus, FileDown, Upload, FileSpreadsheet, School } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
@@ -360,11 +360,11 @@ export default function DataSiswa() {
             label="Tambah Data"
             disabled={loading || submitting}
             actions={[
-              { label: 'Tambah Siswa', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
+              hasPermission('wali_kelas') && { label: 'Tambah Siswa', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
               { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
               { label: 'Export Excel', icon: <FileDown size={18} />, onClick: handleExport },
-              { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
-            ]}
+              hasPermission('wali_kelas') && { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
+            ].filter(Boolean)}
           />
         </div>
       </div>
@@ -455,7 +455,9 @@ export default function DataSiswa() {
                     <td data-label="Aksi">
                       <div className="actions">
                         <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(siswa)}><Edit size={16} /></button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(siswa.id)}><Trash2 size={16} /></button>
+                        {hasPermission('wali_kelas') && (
+                          <button className="btn btn-sm btn-danger" onClick={() => handleDelete(siswa.id)}><Trash2 size={16} /></button>
+                        )}
                       </div>
                     </td>
                   </tr>

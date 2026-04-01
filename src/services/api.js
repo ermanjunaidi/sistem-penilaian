@@ -1,8 +1,11 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_TIMEOUT_MS = 15000;
 
 // Helper function for API calls
 async function apiCall(endpoint, options = {}) {
   const token = localStorage.getItem('token');
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
   
   const headers = {
     'Content-Type': 'application/json',
@@ -10,24 +13,40 @@ async function apiCall(endpoint, options = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
 
-  const data = await response.json();
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json')
+      ? await response.json()
+      : { message: response.statusText || 'Request failed' };
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+    if (!response.ok) {
+      if (response.status === 401) {
+        // Token expired or invalid
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
+      throw new Error(data.message || 'Request failed');
     }
-    throw new Error(data.message || 'Request failed');
-  }
 
-  return data;
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout. Server terlalu lama merespons.');
+    }
+    if (error instanceof TypeError) {
+      throw new Error('Tidak dapat terhubung ke server.');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 // Auth API
@@ -363,6 +382,12 @@ export const penilaianAPI = {
   calculateNilaiAkhir: (data) => 
     apiCall('/penilaian/nilai-akhir/calculate', {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateNilaiAkhir: (id, data) =>
+    apiCall(`/penilaian/nilai-akhir/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(data),
     }),
   

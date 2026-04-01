@@ -11,9 +11,9 @@ const menuGroups = [
     items: [
       { path: '/dashboard', label: 'Informasi Umum', icon: Home },
       { path: '/dashboard/data-sekolah', label: 'Data Sekolah', icon: School },
-      { path: '/dashboard/manajemen-user', label: 'Manajemen User', icon: Settings },
-      { path: '/dashboard/data-kelas', label: 'Data Kelas', icon: School },
-      { path: '/dashboard/data-siswa', label: 'Data Siswa', icon: Users },
+      { path: '/dashboard/manajemen-user', label: 'Manajemen User', icon: Settings, roles: ['admin', 'superadmin'] },
+      { path: '/dashboard/data-kelas', label: 'Data Kelas', icon: School, roles: ['admin', 'superadmin', 'wali_kelas'] },
+      { path: '/dashboard/data-siswa', label: 'Data Siswa', icon: Users, roles: ['admin', 'superadmin', 'wali_kelas', 'guru'] },
       { path: '/dashboard/mata-pelajaran', label: 'Mata Pelajaran', icon: BookOpen },
     ]
   },
@@ -27,17 +27,17 @@ const menuGroups = [
   {
     title: 'INPUT',
     items: [
-      { path: '/dashboard/tujuan-pembelajaran', label: 'Tujuan Pembelajaran', icon: Target },
-      { path: '/dashboard/lingkup-materi', label: 'Lingkup Materi', icon: FileText },
-      { path: '/dashboard/asesmen-formatif', label: 'Asesmen Formatif', icon: CheckSquare },
-      { path: '/dashboard/asesmen-sumatif', label: 'Asesmen Sumatif', icon: ClipboardList },
+      { path: '/dashboard/tujuan-pembelajaran', label: 'Tujuan Pembelajaran', icon: Target, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/lingkup-materi', label: 'Lingkup Materi', icon: FileText, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/asesmen-formatif', label: 'Asesmen Formatif', icon: CheckSquare, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/asesmen-sumatif', label: 'Asesmen Sumatif', icon: ClipboardList, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
     ]
   },
   {
     title: 'PENILAIAN',
     items: [
-      { path: '/dashboard/penilaian-ekstrakurikuler', label: 'Penilaian Ekstrakurikuler', icon: Award },
-      { path: '/dashboard/nilai-akhir', label: 'Nilai Akhir', icon: Award },
+      { path: '/dashboard/penilaian-ekstrakurikuler', label: 'Penilaian Ekstrakurikuler', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
+      { path: '/dashboard/nilai-akhir', label: 'Nilai Akhir', icon: Award, roles: ['guru', 'wali_kelas', 'admin', 'superadmin'] },
     ]
   },
   {
@@ -50,8 +50,8 @@ const menuGroups = [
   {
     title: 'LAPORAN',
     items: [
-      { path: '/dashboard/mutasi', label: 'Mutasi', icon: UserPlus },
-      { path: '/dashboard/buku-induk', label: 'Buku Induk', icon: Book },
+      { path: '/dashboard/mutasi', label: 'Mutasi', icon: UserPlus, roles: ['admin', 'superadmin'] },
+      { path: '/dashboard/buku-induk', label: 'Buku Induk', icon: Book, roles: ['admin', 'superadmin', 'wali_kelas'] },
     ]
   },
 ];
@@ -65,6 +65,11 @@ export default function Sidebar({ isSidebarOpen, onToggleSidebar }) {
     localStorage.removeItem('user');
     navigate('/');
   };
+
+  const filteredMenuGroups = menuGroups.map(group => ({
+    ...group,
+    items: group.items.filter(item => !item.roles || item.roles.includes(user.role))
+  })).filter(group => group.items.length > 0);
 
   return (
     <aside className="sidebar">
@@ -129,7 +134,7 @@ export default function Sidebar({ isSidebarOpen, onToggleSidebar }) {
       </div> */}
 
       <nav className="sidebar-nav">
-        {menuGroups.map((group, groupIndex) => (
+        {filteredMenuGroups.map((group, groupIndex) => (
           <div key={groupIndex} className="nav-group">
             <div className="nav-group-title">{group.title}</div>
             {group.items.map((item) => {

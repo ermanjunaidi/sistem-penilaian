@@ -606,10 +606,10 @@ func (a *App) siswaRoutes() chi.Router {
   r := chi.NewRouter()
   r.With(a.authorizeHierarchy("guru")).Get("/", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "data_siswa", map[string]string{"kelas": "kelas", "status": "status"}) })
   r.With(a.authorizeHierarchy("guru")).Get("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleGetByID(w, r, "data_siswa", "Siswa tidak ditemukan.") })
-  r.With(a.authorizeHierarchy("admin")).Post("/", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "data_siswa", "Siswa berhasil ditambahkan.") })
+  r.With(a.authorizeHierarchy("wali_kelas")).Post("/", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "data_siswa", "Siswa berhasil ditambahkan.") })
   r.With(a.authorizeHierarchy("guru")).Put("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "data_siswa", "Data siswa berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("admin")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "data_siswa", "Siswa berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("admin")).Post("/bulk", a.bulkSiswa)
+  r.With(a.authorizeHierarchy("wali_kelas")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "data_siswa", "Siswa berhasil dihapus.") })
+  r.With(a.authorizeHierarchy("wali_kelas")).Post("/bulk", a.bulkSiswa)
   return r
 }
 
@@ -660,6 +660,7 @@ func (a *App) penilaianRoutes() chi.Router {
   r.With(a.authorizeHierarchy("guru")).Delete("/sumatif/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "asesmen_sumatif", "Asesmen sumatif berhasil dihapus.") })
   r.With(a.authorizeHierarchy("guru")).Get("/nilai-akhir", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "nilai_akhir", map[string]string{"siswaId": "siswa_id", "mataPelajaranId": "mata_pelajaran_id", "semester": "semester", "tahunAjaran": "tahun_ajaran"}) })
   r.With(a.authorizeHierarchy("guru")).Post("/nilai-akhir/calculate", a.calculateNilaiAkhir)
+  r.With(a.authorizeHierarchy("guru")).Put("/nilai-akhir/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "nilai_akhir", "Nilai akhir berhasil diperbarui.") })
   r.With(a.authorizeHierarchy("admin")).Delete("/nilai-akhir/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "nilai_akhir", "Nilai akhir berhasil dihapus.") })
   r.With(a.authorizeHierarchy("admin")).Get("/mutasi", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "mutasi", map[string]string{"jenis": "jenis", "siswaId": "siswa_id"}) })
   r.With(a.authorizeHierarchy("admin")).Post("/mutasi", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "mutasi", "Mutasi berhasil ditambahkan.") })
@@ -675,6 +676,10 @@ func (a *App) calculateNilaiAkhir(w http.ResponseWriter, r *http.Request) {
   if tahunAjaran == "" {
     y := time.Now().Year()
     tahunAjaran = fmt.Sprintf("%d/%d", y, y+1)
+  }
+  if _, err := a.db.Exec(r.Context(), "DELETE FROM nilai_akhir WHERE semester=$1 AND tahun_ajaran=$2", semester, tahunAjaran); err != nil {
+    serverErr(w, err)
+    return
   }
   students, err := a.many(r.Context(), "SELECT id,nama,nisn FROM data_siswa")
   if err != nil { serverErr(w, err); return }
@@ -885,22 +890,27 @@ func serverErr(w http.ResponseWriter, err error) {
 }
 
 func toStr(v any) string {
-  if v == nil { return "" }
-  switch t := v.(type) {
-  case string: return t
-  case float64: return strconv.FormatFloat(t, 'f', -1, 64)
-  case bool: if t { return "true" }; return "false"
-  default: return fmt.Sprintf("%v", v)
-  }
+	if v == nil { return "" }
+	switch t := v.(type) {
+	case string: return t
+	case float64: return strconv.FormatFloat(t, 'f', -1, 64)
+	case bool: if t { return "true" }; return "false"
+	case []any:
+		b, _ := json.Marshal(t)
+		return string(b)
+	default: return fmt.Sprintf("%v", v)
+	}
 }
 
 func normalizeDBValue(v any) any {
-  switch t := v.(type) {
-  case []byte:
-    return string(t)
-  default:
-    return v
-  }
+	switch t := v.(type) {
+	case []byte:
+		return string(t)
+	case [16]byte:
+		return fmt.Sprintf("%x-%x-%x-%x-%x", t[0:4], t[4:6], t[6:8], t[8:10], t[10:])
+	default:
+		return v
+	}
 }
 
 func camelToSnake(in string) string {

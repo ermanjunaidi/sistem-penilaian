@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { penilaianAPI } from '../../services/api';
 import { Plus, Edit, Trash2, CheckSquare } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 
 export default function AsesmenFormatif() {
-  const { asesmenFormatif, setAsesmenFormatif, mataPelajaran, dataSiswa, generateId } = useApp();
+  const { asesmenFormatif, refreshAsesmenFormatif, mataPelajaran, dataSiswa } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState({ error: '', success: '' });
   const [formData, setFormData] = useState({
     mataPelajaranId: '',
     siswaId: '',
@@ -42,19 +45,50 @@ export default function AsesmenFormatif() {
     setEditingItem(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingItem) {
-      setAsesmenFormatif(prev => prev.map(a => a.id === editingItem.id ? { ...formData, id: a.id } : a));
-    } else {
-      setAsesmenFormatif(prev => [...prev, { ...formData, id: generateId() }]);
+    setSaving(true);
+    setFeedback({ error: '', success: '' });
+
+    const payload = {
+      mataPelajaranId: formData.mataPelajaranId,
+      siswaId: formData.siswaId,
+      jenis: formData.jenis,
+      tanggal: formData.tanggal || null,
+      nilai: formData.nilai,
+      deskripsi: formData.deskripsi.trim(),
+      keterangan: formData.keterangan.trim(),
+    };
+
+    try {
+      if (editingItem) {
+        await penilaianAPI.updateFormatif(editingItem.id, payload);
+      } else {
+        await penilaianAPI.createFormatif(payload);
+      }
+      await refreshAsesmenFormatif();
+      setFeedback({
+        error: '',
+        success: editingItem ? 'Asesmen formatif berhasil diperbarui.' : 'Asesmen formatif berhasil ditambahkan.',
+      });
+      handleCloseModal();
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal menyimpan asesmen formatif.', success: '' });
+    } finally {
+      setSaving(false);
     }
-    handleCloseModal();
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus asesmen formatif ini?')) {
-      setAsesmenFormatif(prev => prev.filter(a => a.id !== id));
+      setFeedback({ error: '', success: '' });
+      try {
+        await penilaianAPI.deleteFormatif(id);
+        await refreshAsesmenFormatif();
+        setFeedback({ error: '', success: 'Asesmen formatif berhasil dihapus.' });
+      } catch (err) {
+        setFeedback({ error: err.message || 'Gagal menghapus asesmen formatif.', success: '' });
+      }
     }
   };
 
@@ -93,6 +127,9 @@ export default function AsesmenFormatif() {
           Tambah Asesmen Formatif
         </button>
       </div>
+
+      {feedback.error && <div className="alert alert-error">{feedback.error}</div>}
+      {feedback.success && <div className="alert alert-success">{feedback.success}</div>}
 
       <div className="card">
         <div className="card-header">
@@ -251,7 +288,9 @@ export default function AsesmenFormatif() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Menyimpan...' : editingItem ? 'Update' : 'Simpan'}
+                </button>
               </div>
             </form>
           </div>

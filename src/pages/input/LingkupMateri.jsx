@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { mapelAPI } from '../../services/api';
 import { Plus, Edit, Trash2, FileText } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 
 export default function LingkupMateri() {
-  const { lingkupMateri, setLingkupMateri, mataPelajaran, generateId } = useApp();
+  const { lingkupMateri, refreshLingkupMateri, mataPelajaran } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState({ error: '', success: '' });
   const [formData, setFormData] = useState({
     mataPelajaranId: '',
     kode: '',
@@ -42,19 +45,50 @@ export default function LingkupMateri() {
     setEditingItem(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingItem) {
-      setLingkupMateri(prev => prev.map(l => l.id === editingItem.id ? { ...formData, id: l.id } : l));
-    } else {
-      setLingkupMateri(prev => [...prev, { ...formData, id: generateId() }]);
+    setSaving(true);
+    setFeedback({ error: '', success: '' });
+
+    const payload = {
+      mataPelajaranId: formData.mataPelajaranId,
+      kode: formData.kode.trim(),
+      namaMateri: formData.namaMateri.trim(),
+      deskripsi: formData.deskripsi.trim(),
+      alokasiWaktu: formData.alokasiWaktu,
+      semester: formData.semester,
+      keterangan: formData.keterangan.trim(),
+    };
+
+    try {
+      if (editingItem) {
+        await mapelAPI.updateMateri(editingItem.id, payload);
+      } else {
+        await mapelAPI.createMateri(payload);
+      }
+      await refreshLingkupMateri();
+      setFeedback({
+        error: '',
+        success: editingItem ? 'Lingkup materi berhasil diperbarui.' : 'Lingkup materi berhasil ditambahkan.',
+      });
+      handleCloseModal();
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal menyimpan lingkup materi.', success: '' });
+    } finally {
+      setSaving(false);
     }
-    handleCloseModal();
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus lingkup materi ini?')) {
-      setLingkupMateri(prev => prev.filter(l => l.id !== id));
+      setFeedback({ error: '', success: '' });
+      try {
+        await mapelAPI.deleteMateri(id);
+        await refreshLingkupMateri();
+        setFeedback({ error: '', success: 'Lingkup materi berhasil dihapus.' });
+      } catch (err) {
+        setFeedback({ error: err.message || 'Gagal menghapus lingkup materi.', success: '' });
+      }
     }
   };
 
@@ -88,6 +122,9 @@ export default function LingkupMateri() {
           Tambah Lingkup Materi
         </button>
       </div>
+
+      {feedback.error && <div className="alert alert-error">{feedback.error}</div>}
+      {feedback.success && <div className="alert alert-success">{feedback.success}</div>}
 
       <div className="card">
         <div className="card-header">
@@ -229,7 +266,9 @@ export default function LingkupMateri() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Menyimpan...' : editingItem ? 'Update' : 'Simpan'}
+                </button>
               </div>
             </form>
           </div>

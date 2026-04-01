@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { penilaianAPI } from '../../services/api';
 import { Calculator, TrendingUp, Edit, Trash2 } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
@@ -7,12 +8,11 @@ import usePagination from '../../hooks/usePagination';
 export default function NilaiAkhir() {
   const { 
     nilaiAkhir, 
-    setNilaiAkhir, 
+    refreshNilaiAkhir,
     mataPelajaran, 
     dataSiswa, 
     asesmenFormatif, 
-    asesmenSumatif, 
-    generateId 
+    asesmenSumatif,
   } = useApp();
   
   const [selectedSiswa, setSelectedSiswa] = useState('');
@@ -20,6 +20,9 @@ export default function NilaiAkhir() {
   const [selectedSemester, setSelectedSemester] = useState('1');
   const [calculationPageByMapel, setCalculationPageByMapel] = useState({});
   const [calculationItemsPerPage, setCalculationItemsPerPage] = useState(10);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState({ error: '', success: '' });
+  const [calculatedPreview, setCalculatedPreview] = useState([]);
 
   // Calculate average scores per subject per student
   const calculateNilai = useMemo(() => {
@@ -90,33 +93,26 @@ export default function NilaiAkhir() {
     return result;
   }, [mataPelajaran, dataSiswa, asesmenFormatif, asesmenSumatif]);
 
-  const handleSaveNilai = () => {
-    const newNilaiAkhir = [];
-    
-    calculateNilai.forEach(({ mapel, siswaNilai }) => {
-      Object.values(siswaNilai).forEach(data => {
-        if (data.akhir > 0) {
-          newNilaiAkhir.push({
-            id: generateId(),
-            mataPelajaranId: mapel.id,
-            mataPelajaran: mapel.nama,
-            siswaId: data.siswa.id,
-            siswa: data.siswa.nama,
-            nisn: data.siswa.nisn,
-            nilaiFormatif: data.formatif,
-            nilaiSumatif: data.sumatif,
-            nilaiAkhir: data.akhir,
-            predikat: data.predikat,
-            deskripsi: data.deskripsi,
-            tahunAjaran: selectedTahunAjaran || new Date().getFullYear() + '/' + (new Date().getFullYear() + 1),
-            semester: selectedSemester
-          });
-        }
+  const handleSaveNilai = async () => {
+    setSaving(true);
+    setFeedback({ error: '', success: '' });
+    try {
+      const response = await penilaianAPI.calculateNilaiAkhir({
+        tahunAjaran: selectedTahunAjaran,
+        semester: selectedSemester,
       });
-    });
-    
-    setNilaiAkhir(newNilaiAkhir);
-    alert('Nilai akhir berhasil dihitung dan disimpan!');
+      const previewItems = (response.data?.nilai || []).map((item) => ({
+        ...item,
+        semester: String(item.semester ?? selectedSemester),
+      }));
+      setCalculatedPreview(previewItems);
+      await refreshNilaiAkhir();
+      setFeedback({ error: '', success: response.message || 'Nilai akhir berhasil dihitung.' });
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal menghitung nilai akhir.', success: '' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const getGradeColor = (nilai) => {
@@ -138,7 +134,7 @@ export default function NilaiAkhir() {
     return { predikat: 'E', deskripsi: 'Sangat Kurang' };
   };
 
-  const handleEditNilai = (item) => {
+  const handleEditNilai = async (item) => {
     const inputNilai = window.prompt('Ubah nilai akhir (0-100)', String(item.nilaiAkhir));
     if (inputNilai === null) return;
 
@@ -154,25 +150,57 @@ export default function NilaiAkhir() {
     const semesterBaru = inputSemester === '2' ? '2' : '1';
     const { predikat, deskripsi } = getPredikatDanDeskripsi(nilaiBaru);
 
-    setNilaiAkhir((prev) =>
-      prev.map((nilai) =>
-        nilai.id === item.id
-          ? {
-              ...nilai,
-              nilaiAkhir: nilaiBaru,
-              predikat,
-              deskripsi,
-              semester: semesterBaru,
-            }
-          : nilai
-      )
-    );
+    try {
+      await penilaianAPI.updateNilaiAkhir(item.id, {
+        nilaiAkhir: nilaiBaru,
+        predikat,
+        deskripsi,
+        semester: semesterBaru,
+      });
+      await refreshNilaiAkhir();
+      setFeedback({ error: '', success: 'Nilai akhir berhasil diperbarui.' });
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal memperbarui nilai akhir.', success: '' });
+    }
   };
 
-  const handleDeleteNilai = (id) => {
+  const handleDeleteNilai = async (id) => {
     if (!window.confirm('Hapus data nilai akhir ini?')) return;
-    setNilaiAkhir((prev) => prev.filter((item) => item.id !== id));
+    try {
+      await penilaianAPI.deleteNilaiAkhir(id);
+      await refreshNilaiAkhir();
+      setFeedback({ error: '', success: 'Nilai akhir berhasil dihapus.' });
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal menghapus nilai akhir.', success: '' });
+    }
   };
+
+  const previewByMapel = useMemo(() => {
+    if (!calculatedPreview.length) {
+      return calculateNilai;
+    }
+
+    return mataPelajaran
+      .map((mapel) => {
+        const relatedItems = calculatedPreview.filter((item) => item.mataPelajaranId === mapel.id);
+        const siswaNilai = relatedItems.reduce((acc, item) => {
+          const siswa = dataSiswa.find((entry) => entry.id === item.siswaId);
+          if (!siswa) return acc;
+          acc[item.siswaId] = {
+            siswa,
+            formatif: Number(item.nilaiFormatif) || 0,
+            sumatif: Number(item.nilaiSumatif) || 0,
+            akhir: Number(item.nilaiAkhir) || 0,
+            predikat: item.predikat || '',
+            deskripsi: item.deskripsi || '',
+          };
+          return acc;
+        }, {});
+
+        return { mapel, siswaNilai };
+      })
+      .filter(({ siswaNilai }) => Object.keys(siswaNilai).length > 0);
+  }, [calculateNilai, calculatedPreview, dataSiswa, mataPelajaran]);
 
   const {
     currentPage,
@@ -189,11 +217,14 @@ export default function NilaiAkhir() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Nilai Akhir</h1>
-        <button className="btn btn-primary" onClick={handleSaveNilai}>
+        <button className="btn btn-primary" onClick={handleSaveNilai} disabled={saving}>
           <Calculator size={18} />
-          Hitung Nilai Akhir
+          {saving ? 'Menghitung...' : 'Hitung Nilai Akhir'}
         </button>
       </div>
+
+      {feedback.error && <div className="alert alert-error">{feedback.error}</div>}
+      {feedback.success && <div className="alert alert-success">{feedback.success}</div>}
 
       <div className="card">
         <div className="card-header">
@@ -250,7 +281,7 @@ export default function NilaiAkhir() {
           <h3 className="card-title">Hasil Perhitungan Nilai Akhir</h3>
         </div>
 
-        {calculateNilai.map(({ mapel, siswaNilai }) => {
+        {previewByMapel.map(({ mapel, siswaNilai }) => {
           const filteredSiswa = selectedSiswa 
             ? { [selectedSiswa]: siswaNilai[selectedSiswa] }
             : siswaNilai;
@@ -316,7 +347,7 @@ export default function NilaiAkhir() {
           );
         })}
 
-        {calculateNilai.every(({ siswaNilai }) => 
+        {previewByMapel.every(({ siswaNilai }) => 
           !Object.values(siswaNilai).some(s => s && s.akhir > 0)
         ) && (
           <div className="empty-state">

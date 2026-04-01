@@ -25,18 +25,18 @@ export default function Login() {
     setLoading(true);
 
     try {
+      console.log('Attempting login with:', { email: formData.email });
       const response = await authAPI.login(formData.email, formData.password);
-      
-      if (response.success) {
-        // Save token and user data
-        localStorage.setItem('token', response.data.token);
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-        
-        // Redirect based on role
-        navigate('/dashboard');
-        window.location.reload();
-      }
+      console.log('Login response:', response);
+
+      // Save token and user data
+      localStorage.setItem('token', response.data.token);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+
+      // Redirect to dashboard
+      navigate('/dashboard', { replace: true });
     } catch (err) {
+      console.error('Login error:', err);
       setError(err.message || 'Login gagal. Silakan coba lagi.');
     } finally {
       setLoading(false);
