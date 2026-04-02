@@ -259,6 +259,7 @@ export default function BukuInduk() {
   // Import from Excel
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState([]);
+  const [importFile, setImportFile] = useState(null);
   const {
     currentPage: importCurrentPage,
     setCurrentPage: setImportCurrentPage,
@@ -273,6 +274,7 @@ export default function BukuInduk() {
   const handleFileImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setImportFile(file);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -283,32 +285,59 @@ export default function BukuInduk() {
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-        let headerRowIndex = 0;
+        let headerRowIndex = -1;
         for (let i = 0; i < Math.min(15, jsonData.length); i++) {
-          if (jsonData[i] && jsonData[i].includes('Nama Lengkap')) {
+          const row = (jsonData[i] || []).map((cell) => String(cell || '').trim().toLowerCase());
+          if (row.includes('nisn') && (row.includes('nama lengkap') || row.includes('nama siswa') || row.includes('nama'))) {
             headerRowIndex = i;
             break;
           }
         }
 
+        if (headerRowIndex === -1) {
+          throw new Error('Header data siswa tidak ditemukan. Gunakan template yang disediakan aplikasi.');
+        }
+
+        const headers = (jsonData[headerRowIndex] || []).map((cell) => String(cell || '').trim().toLowerCase());
+        const getColumnIndex = (...aliases) => headers.findIndex((header) => aliases.includes(header));
+        const nisIndex = getColumnIndex('nis');
+        const nisnIndex = getColumnIndex('nisn');
+        const namaIndex = getColumnIndex('nama lengkap', 'nama siswa', 'nama');
+        const jkIndex = getColumnIndex('l/p', 'jenis kelamin');
+        const tempatIndex = getColumnIndex('tempat lahir');
+        const tanggalLahirIndex = getColumnIndex('tanggal lahir');
+        const agamaIndex = getColumnIndex('agama');
+        const alamatIndex = getColumnIndex('alamat');
+        const namaOrtuIndex = getColumnIndex('nama orang tua', 'nama orang tua/wali', 'nama wali');
+        const teleponIndex = getColumnIndex('telepon orang tua', 'telepon wali');
+        const tanggalMasukIndex = getColumnIndex('tanggal masuk');
+        const kelasIndex = getColumnIndex('kelas');
+
         const dataRows = jsonData.slice(headerRowIndex + 1);
 
         const parsedData = dataRows
-          .filter(row => row[2] || row[1])
+          .filter((row) => {
+            const nama = namaIndex >= 0 ? row[namaIndex] : '';
+            const nisn = nisnIndex >= 0 ? row[nisnIndex] : '';
+            return nama || nisn;
+          })
           .map((row) => ({
             id: generateId(),
-            nis: row[0] || '',
-            nisn: row[1] || '',
-            nama: row[2] || '',
-            jenisKelamin: row[3] === 'P' || row[3] === 'Perempuan' ? 'P' : 'L',
-            tempatLahir: row[4] || '',
-            tanggalLahir: formatDate(row[5]),
-            agama: row[6] || '',
-            alamat: row[7] || '',
-            namaOrtu: row[8] || '',
-            teleponOrtu: row[9] || '',
-            tanggalMasuk: formatDate(row[10]),
-            kelas: row[11] || '',
+            nis: nisIndex >= 0 ? row[nisIndex] || '' : '',
+            nisn: nisnIndex >= 0 ? row[nisnIndex] || '' : '',
+            nama: namaIndex >= 0 ? row[namaIndex] || '' : '',
+            jenisKelamin: (() => {
+              const nilai = String(jkIndex >= 0 ? row[jkIndex] || '' : '').trim().toUpperCase();
+              return nilai === 'P' || nilai.startsWith('PEREMPUAN') ? 'P' : 'L';
+            })(),
+            tempatLahir: tempatIndex >= 0 ? row[tempatIndex] || '' : '',
+            tanggalLahir: formatDate(tanggalLahirIndex >= 0 ? row[tanggalLahirIndex] : ''),
+            agama: agamaIndex >= 0 ? row[agamaIndex] || '' : '',
+            alamat: alamatIndex >= 0 ? row[alamatIndex] || '' : '',
+            namaOrtu: namaOrtuIndex >= 0 ? row[namaOrtuIndex] || '' : '',
+            teleponOrtu: teleponIndex >= 0 ? row[teleponIndex] || '' : '',
+            tanggalMasuk: formatDate(tanggalMasukIndex >= 0 ? row[tanggalMasukIndex] : ''),
+            kelas: kelasIndex >= 0 ? row[kelasIndex] || '' : '',
             status: 'Aktif'
           }));
 
@@ -333,6 +362,10 @@ export default function BukuInduk() {
       alert('Tidak ada data untuk diimport');
       return;
     }
+    if (!importFile) {
+      alert('File import tidak ditemukan');
+      return;
+    }
 
     const invalidKelas = importData.filter(
       (siswa) => !kelasOptions.some((kelas) => kelas.nama === siswa.kelas)
@@ -343,13 +376,16 @@ export default function BukuInduk() {
     }
 
     try {
-      await siswaAPI.bulkImport(importData);
+      const formDataUpload = new FormData();
+      formDataUpload.append('file', importFile);
+      await siswaAPI.bulkImport(formDataUpload);
       await refreshDataSiswa();
     } catch (err) {
       window.alert(err.message || 'Gagal mengimport buku induk.');
       return;
     }
     setImportData([]);
+    setImportFile(null);
     setShowImportModal(false);
     alert(`Berhasil mengimport ${importData.length} data siswa`);
   };
@@ -637,11 +673,11 @@ export default function BukuInduk() {
       )}
 
       {showImportModal && (
-        <div className="modal-overlay" onClick={() => { setShowImportModal(false); setImportData([]); }}>
+        <div className="modal-overlay" onClick={() => { setShowImportModal(false); setImportData([]); setImportFile(null); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3 className="modal-title">Import Data Siswa dari Excel</h3>
-              <button className="btn btn-sm btn-secondary" onClick={() => { setShowImportModal(false); setImportData([]); }}>×</button>
+              <button className="btn btn-sm btn-secondary" onClick={() => { setShowImportModal(false); setImportData([]); setImportFile(null); }}>×</button>
             </div>
             <div className="modal-body">
               <div className="form-group mb-2">
@@ -702,7 +738,7 @@ export default function BukuInduk() {
               <button 
                 type="button" 
                 className="btn btn-secondary" 
-                onClick={() => { setShowImportModal(false); setImportData([]); }}
+                onClick={() => { setShowImportModal(false); setImportData([]); setImportFile(null); }}
               >
                 Batal
               </button>

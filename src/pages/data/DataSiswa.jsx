@@ -31,6 +31,7 @@ export default function DataSiswa() {
   const [selectedKelas, setSelectedKelas] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [importData, setImportData] = useState([]);
+  const [importFile, setImportFile] = useState(null);
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -261,50 +262,62 @@ export default function DataSiswa() {
       ...exampleData,
     ];
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    XLSX.utils.book_append_sheet(XLSX.utils.book_new(), ws, 'Template');
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Template');
+    XLSX.utils.book_append_sheet(wb, ws, 'Data Siswa');
     XLSX.writeFile(wb, 'Template_Import_Data_Siswa.xlsx');
   };
 
   const handleFileImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setImportFile(file);
 
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const data = new Uint8Array(event.target.result);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const sheetName = workbook.SheetNames[0];
+        const sheetName = workbook.SheetNames.find(n => n === 'Data Siswa') || workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-        let headerRowIndex = 0;
+        let headerRowIndex = -1;
         for (let i = 0; i < Math.min(15, jsonData.length); i++) {
-          if (jsonData[i] && jsonData[i].includes('Nama Lengkap')) {
+          const row = (jsonData[i] || []).map((cell) => String(cell || '').trim().toLowerCase());
+          if (row.includes('nisn') && (row.includes('nama lengkap') || row.includes('nama siswa') || row.includes('nama'))) {
             headerRowIndex = i;
             break;
           }
         }
 
+        if (headerRowIndex === -1) {
+          throw new Error('Header data siswa tidak ditemukan. Gunakan template yang disediakan aplikasi.');
+        }
+
+        const headers = (jsonData[headerRowIndex] || []).map((cell) => String(cell || '').trim().toLowerCase());
+        const getColumnIndex = (...aliases) => headers.findIndex((header) => aliases.includes(header));
+        const nisIndex = getColumnIndex('nis');
+        const nisnIndex = getColumnIndex('nisn');
+        const namaIndex = getColumnIndex('nama lengkap', 'nama siswa', 'nama');
+        const jkIndex = getColumnIndex('l/p', 'jenis kelamin');
+        const kelasIndex = getColumnIndex('kelas');
+
         const dataRows = jsonData.slice(headerRowIndex + 1);
         const parsedData = dataRows
-          .filter((row) => row[2] || row[1])
+          .filter((row) => {
+            const nama = namaIndex >= 0 ? row[namaIndex] : '';
+            const nisn = nisnIndex >= 0 ? row[nisnIndex] : '';
+            return nama || nisn;
+          })
           .map((row) => ({
-            nis: row[0] || '',
-            nisn: row[1] || '',
-            nama: row[2] || '',
-            jenisKelamin: row[3] === 'P' || row[3] === 'Perempuan' ? 'P' : 'L',
-            tempatLahir: row[4] || '',
-            tanggalLahir: formatDate(row[5]),
-            agama: row[6] || '',
-            alamat: row[7] || '',
-            namaOrtu: row[8] || '',
-            teleponOrtu: row[9] || '',
-            tanggalMasuk: formatDate(row[10]),
-            kelas: row[11] || '',
-            status: 'Aktif',
+            nis: nisIndex >= 0 ? row[nisIndex] || '' : '',
+            nisn: nisnIndex >= 0 ? row[nisnIndex] || '' : '',
+            nama: namaIndex >= 0 ? row[namaIndex] || '' : '',
+            jenisKelamin: (() => {
+              const nilai = String(jkIndex >= 0 ? row[jkIndex] || '' : '').trim().toUpperCase();
+              return nilai === 'P' || nilai.startsWith('PEREMPUAN') ? 'P' : 'L';
+            })(),
+            kelas: kelasIndex >= 0 ? row[kelasIndex] || '' : '',
           }));
 
         setImportData(parsedData);
@@ -322,16 +335,8 @@ export default function DataSiswa() {
   };
 
   const confirmImport = async () => {
-    if (importData.length === 0) {
-      window.alert('Tidak ada data untuk diimport');
-      return;
-    }
-
-    const invalidKelas = importData.filter(
-      (siswa) => !kelasOptions.some((kelas) => kelas.nama === siswa.kelas)
-    );
-    if (invalidKelas.length > 0) {
-      window.alert(`Ada ${invalidKelas.length} data siswa dengan kelas yang belum dibuat.`);
+    if (!importFile) {
+      window.alert('Pilih file terlebih dahulu');
       return;
     }
 
@@ -339,11 +344,18 @@ export default function DataSiswa() {
     setError('');
     setSuccessMessage('');
     try {
-      await siswaAPI.bulkImport(importData);
-      await refreshDataSiswa();
-      setImportData([]);
-      setShowImportModal(false);
-      setSuccessMessage(`Berhasil mengimport ${importData.length} data siswa.`);
+      const fd = new FormData();
+      fd.append('file', importFile);
+      const res = await siswaAPI.bulkImport(fd);
+      if (res.success) {
+        await refreshDataSiswa();
+        setImportData([]);
+        setImportFile(null);
+        setShowImportModal(false);
+        setSuccessMessage(res.message || `Berhasil mengimport data siswa.`);
+      } else {
+        throw new Error(res.message);
+      }
     } catch (err) {
       setError(err.message || 'Gagal mengimport data siswa.');
     } finally {

@@ -192,12 +192,14 @@ export default function MataPelajaran() {
   };
 
   const handleImport = async () => {
-    if (!importFile || importPreview.length === 0) {
+    if (!importFile) {
       alert('Pilih file dan pastikan ada data untuk diimport');
       return;
     }
 
-    if (!window.confirm(`Import ${importPreview.length} mata pelajaran? Data yang duplikat akan diupdate.`)) {
+    const isExcelFile = importFile.name.toLowerCase().endsWith('.xlsx');
+    const importLabel = isExcelFile ? 'data dari file Excel ini' : `${importPreview.length} mata pelajaran`;
+    if (!window.confirm(`Import ${importLabel}? Data yang duplikat akan diupdate.`)) {
       return;
     }
 
@@ -209,7 +211,8 @@ export default function MataPelajaran() {
       const result = await mapelAPI.import(formDataUpload);
 
       if (result.success) {
-        alert(`Berhasil import ${result.data?.imported || importPreview.length} mata pelajaran!`);
+        const importedCount = result.data?.imported ?? (isExcelFile ? 'data' : importPreview.length);
+        alert(`Berhasil import ${importedCount} mata pelajaran!`);
         await refreshMataPelajaran();
       } else {
         alert('Gagal import: ' + result.message);
@@ -513,7 +516,7 @@ export default function MataPelajaran() {
                 type="button" 
                 className="btn btn-primary" 
                 onClick={handleImport}
-                disabled={!importFile || importPreview.length === 0 || isProcessing}
+                disabled={!importFile || isProcessing}
               >
                 {isProcessing ? 'Mengimport...' : 'Import Data'}
               </button>

@@ -3,6 +3,7 @@ package app
 import (
   "bytes"
   "context"
+  "encoding/csv"
   "encoding/json"
   "errors"
   "fmt"
@@ -11,6 +12,7 @@ import (
   "math"
   "net/http"
   "os"
+  "slices"
   "strconv"
   "strings"
   "time"
@@ -445,51 +447,69 @@ func (a *App) importUsers(w http.ResponseWriter, r *http.Request) {
     }
     defer f.Close()
 
-    rows, err := f.GetRows("Users")
+    sheetName := "Users"
+    if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+      sheetName = f.GetSheetName(0)
+    }
+    rows, err := f.GetRows(sheetName)
     if err != nil {
       respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Users' tidak ditemukan"})
       return
     }
 
-    if len(rows) < 2 {
+    headerRowIndex := findHeaderRow(rows, []string{"email"}, []string{"nama", "name"})
+    if headerRowIndex == -1 {
       respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
       return
     }
 
-    headers := rows[0]
-    for i := 1; i < len(rows); i++ {
+    fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+      "email": {"email"},
+      "password": {"password", "kata sandi"},
+      "nama": {"nama", "name"},
+      "nip": {"nip"},
+      "role": {"role", "peran"},
+      "telepon": {"telepon", "no telepon", "nomor telepon", "phone"},
+      "alamat": {"alamat", "address"},
+    })
+
+    for i := headerRowIndex + 1; i < len(rows); i++ {
       row := rows[i]
       item := make(map[string]any)
-      for j, h := range headers {
-        if j < len(row) {
-          item[strings.ToLower(h)] = row[j]
-        }
+      for field, idx := range fieldIndexes {
+        item[field] = getRowCell(row, idx)
       }
-      if email, ok := item["email"].(string); ok && email != "" {
+      if email := strings.TrimSpace(toStr(item["email"])); email != "" {
         data = append(data, item)
       }
     }
   } else {
-    // CSV
-    lines := strings.Split(string(content), "\n")
-    var headers []string
-    for i, line := range lines {
-      line = strings.TrimSpace(line)
-      if line == "" || strings.HasPrefix(line, "#") { continue }
-      if i == 0 {
-        headers = strings.Split(line, ",")
-        for j := range headers { headers[j] = strings.TrimSpace(headers[j]) }
-        continue
-      }
-      values := strings.Split(line, ",")
-      if len(values) < 3 { continue }
+    records, err := parseCSVRecords(content)
+    if err != nil {
+      respond(w, 400, map[string]any{"success": false, "message": "File CSV tidak valid"})
+      return
+    }
+    if len(records) == 0 {
+      respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+      return
+    }
+
+    fieldIndexes := buildHeaderIndex(records[0], map[string][]string{
+      "email": {"email"},
+      "password": {"password", "kata sandi"},
+      "nama": {"nama", "name"},
+      "nip": {"nip"},
+      "role": {"role", "peran"},
+      "telepon": {"telepon", "no telepon", "nomor telepon", "phone"},
+      "alamat": {"alamat", "address"},
+    })
+
+    for i := 1; i < len(records); i++ {
       row := make(map[string]any)
-      for j, h := range headers {
-        if j < len(values) {
-          row[h] = strings.TrimSpace(values[j])
-        }
+      for field, idx := range fieldIndexes {
+        row[field] = getRowCell(records[i], idx)
       }
-      if email, ok := row["email"].(string); ok && email != "" {
+      if email := strings.TrimSpace(toStr(row["email"])); email != "" {
         data = append(data, row)
       }
     }
@@ -672,8 +692,127 @@ func (a *App) siswaRoutes() chi.Router {
   r.With(a.authorizeHierarchy("wali_kelas")).Post("/", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "data_siswa", "Siswa berhasil ditambahkan.") })
   r.With(a.authorizeHierarchy("guru")).Put("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "data_siswa", "Data siswa berhasil diperbarui.") })
   r.With(a.authorizeHierarchy("wali_kelas")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "data_siswa", "Siswa berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("wali_kelas")).Post("/bulk", a.bulkSiswa)
+  r.With(a.authorizeHierarchy("wali_kelas")).Post("/import", a.importSiswa)
   return r
+}
+
+func (a *App) importSiswa(w http.ResponseWriter, r *http.Request) {
+  err := r.ParseMultipartForm(10 << 20)
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar"}); return }
+
+  file, _, err := r.FormFile("file")
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"}); return }
+  defer file.Close()
+
+  content, _ := io.ReadAll(file)
+  f, err := excelize.OpenReader(bytes.NewReader(content))
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid"}); return }
+  defer f.Close()
+
+  sheetName := "Data Siswa"
+  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+    sheetName = f.GetSheetName(0)
+  }
+  rows, err := f.GetRows(sheetName)
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Data Siswa' tidak ditemukan"}); return }
+
+  headerRowIndex := -1
+  for i := 0; i < len(rows) && i < 15; i++ {
+    normalized := make([]string, 0, len(rows[i]))
+    for _, cell := range rows[i] {
+      normalized = append(normalized, strings.ToLower(strings.TrimSpace(cell)))
+    }
+
+    hasNISN := slices.Contains(normalized, "nisn")
+    hasName := slices.Contains(normalized, "nama lengkap") || slices.Contains(normalized, "nama siswa") || slices.Contains(normalized, "nama")
+    if hasNISN && hasName {
+      headerRowIndex = i
+      break
+    }
+  }
+
+  if headerRowIndex == -1 {
+    respond(w, 400, map[string]any{"success": false, "message": "Format template tidak sesuai"}); return
+  }
+
+  headers := make([]string, 0, len(rows[headerRowIndex]))
+  for _, header := range rows[headerRowIndex] {
+    headers = append(headers, strings.ToLower(strings.TrimSpace(header)))
+  }
+
+  findCol := func(aliases ...string) int {
+    for idx, header := range headers {
+      for _, alias := range aliases {
+        if header == alias {
+          return idx
+        }
+      }
+    }
+    return -1
+  }
+
+  nisIdx := findCol("nis")
+  nisnIdx := findCol("nisn")
+  namaIdx := findCol("nama lengkap", "nama siswa", "nama")
+  jkIdx := findCol("l/p", "jenis kelamin")
+  tempatIdx := findCol("tempat lahir")
+  tglLahirIdx := findCol("tanggal lahir")
+  agamaIdx := findCol("agama")
+  alamatIdx := findCol("alamat")
+  namaOrtuIdx := findCol("nama orang tua", "nama orang tua/wali", "nama wali")
+  teleponIdx := findCol("telepon orang tua", "telepon wali")
+  tglMasukIdx := findCol("tanggal masuk")
+  kelasIdx := findCol("kelas")
+
+  if nisnIdx == -1 || namaIdx == -1 {
+    respond(w, 400, map[string]any{"success": false, "message": "Kolom wajib NISN dan Nama tidak ditemukan"}); return
+  }
+
+  inserted := 0
+  errs := []map[string]any{}
+  
+  getCell := func(row []string, idx int) string {
+    if idx < 0 || idx >= len(row) {
+      return ""
+    }
+    return strings.TrimSpace(row[idx])
+  }
+
+  for i := headerRowIndex + 1; i < len(rows); i++ {
+    row := rows[i]
+    nis := getCell(row, nisIdx)
+    nisn := getCell(row, nisnIdx)
+    nama := getCell(row, namaIdx)
+    
+    if nisn == "" || nama == "" { continue }
+
+    jk := "L"
+    if jkVal := getCell(row, jkIdx); jkVal != "" {
+      val := strings.ToUpper(jkVal)
+      if val == "P" || strings.HasPrefix(val, "PEREMPUAN") { jk = "P" }
+    }
+    
+    tempat := getCell(row, tempatIdx)
+    tgl := getCell(row, tglLahirIdx)
+    agama := getCell(row, agamaIdx)
+    alamat := getCell(row, alamatIdx)
+    namaOrtu := getCell(row, namaOrtuIdx)
+    telepon := getCell(row, teleponIdx)
+    tglMasuk := getCell(row, tglMasukIdx)
+    kelas := getCell(row, kelasIdx)
+
+    _, err = a.db.Exec(r.Context(), 
+      "INSERT INTO data_siswa (nis,nisn,nama,jenis_kelamin,tempat_lahir,tanggal_lahir,agama,alamat,nama_ortu,telepon_ortu,tanggal_masuk,kelas,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (nisn) DO UPDATE SET nis=EXCLUDED.nis, nama=EXCLUDED.nama, jenis_kelamin=EXCLUDED.jenis_kelamin, tempat_lahir=EXCLUDED.tempat_lahir, tanggal_lahir=EXCLUDED.tanggal_lahir, agama=EXCLUDED.agama, alamat=EXCLUDED.alamat, nama_ortu=EXCLUDED.nama_ortu, telepon_ortu=EXCLUDED.telepon_ortu, tanggal_masuk=EXCLUDED.tanggal_masuk, kelas=EXCLUDED.kelas, updated_at=NOW()",
+      nullIfEmpty(nis), nisn, nama, jk, nullIfEmpty(tempat), nullIfEmpty(tgl), nullIfEmpty(agama), nullIfEmpty(alamat), namaOrtu, nullIfEmpty(telepon), nullIfEmpty(tglMasuk), nullIfEmpty(kelas), "Aktif")
+    
+    if err != nil {
+      errs = append(errs, map[string]any{"nisn": nisn, "nama": nama, "error": err.Error()})
+    } else {
+      inserted++
+    }
+  }
+
+  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil mengimport %d siswa.", inserted), "data": map[string]any{"inserted": inserted, "errors": errs}})
 }
 
 func (a *App) mapelRoutes() chi.Router {
@@ -971,6 +1110,107 @@ func toStr(v any) string {
 	}
 }
 
+func normalizeImportHeader(s string) string {
+  s = strings.TrimSpace(strings.ToLower(s))
+  replacer := strings.NewReplacer("_", " ", "\n", " ", "\r", " ", "\t", " ", ":", " ")
+  s = replacer.Replace(s)
+  return strings.Join(strings.Fields(s), " ")
+}
+
+func findHeaderRow(rows [][]string, requiredGroups ...[]string) int {
+  limit := len(rows)
+  if limit > 20 {
+    limit = 20
+  }
+
+  for i := 0; i < limit; i++ {
+    normalized := make([]string, 0, len(rows[i]))
+    for _, cell := range rows[i] {
+      normalized = append(normalized, normalizeImportHeader(cell))
+    }
+
+    matchedAll := true
+    for _, group := range requiredGroups {
+      matched := false
+      for _, alias := range group {
+        if slices.Contains(normalized, normalizeImportHeader(alias)) {
+          matched = true
+          break
+        }
+      }
+      if !matched {
+        matchedAll = false
+        break
+      }
+    }
+
+    if matchedAll {
+      return i
+    }
+  }
+
+  return -1
+}
+
+func buildHeaderIndex(headers []string, aliases map[string][]string) map[string]int {
+  indexByHeader := map[string]int{}
+  for idx, header := range headers {
+    normalized := normalizeImportHeader(header)
+    if normalized != "" {
+      indexByHeader[normalized] = idx
+    }
+  }
+
+  result := map[string]int{}
+  for field, candidates := range aliases {
+    result[field] = -1
+    for _, alias := range candidates {
+      if idx, ok := indexByHeader[normalizeImportHeader(alias)]; ok {
+        result[field] = idx
+        break
+      }
+    }
+  }
+  return result
+}
+
+func getRowCell(row []string, idx int) string {
+  if idx < 0 || idx >= len(row) {
+    return ""
+  }
+  return strings.TrimSpace(row[idx])
+}
+
+func parseCSVRecords(content []byte) ([][]string, error) {
+  filtered := make([]string, 0)
+  for _, line := range strings.Split(string(content), "\n") {
+    trimmed := strings.TrimSpace(line)
+    if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+      continue
+    }
+    filtered = append(filtered, line)
+  }
+
+  reader := csv.NewReader(strings.NewReader(strings.Join(filtered, "\n")))
+  reader.TrimLeadingSpace = true
+  return reader.ReadAll()
+}
+
+func parseJSONArray(content []byte) ([]map[string]any, error) {
+  var direct []map[string]any
+  if err := json.Unmarshal(content, &direct); err == nil {
+    return direct, nil
+  }
+
+  var wrapped struct {
+    Data []map[string]any `json:"data"`
+  }
+  if err := json.Unmarshal(content, &wrapped); err != nil {
+    return nil, err
+  }
+  return wrapped.Data, nil
+}
+
 func normalizeDBValue(v any) any {
 	switch t := v.(type) {
 	case []byte:
@@ -1199,51 +1439,73 @@ func (a *App) importMapel(w http.ResponseWriter, r *http.Request) {
     }
     defer f.Close()
 
-    rows, err := f.GetRows("Mata Pelajaran")
+    sheetName := "Mata Pelajaran"
+  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+    sheetName = f.GetSheetName(0)
+  }
+  rows, err := f.GetRows(sheetName)
     if err != nil {
       respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Mata Pelajaran' tidak ditemukan"})
       return
     }
 
-    if len(rows) < 2 {
+    headerRowIndex := findHeaderRow(rows, []string{"nama"}, []string{"kode", "id"})
+    if headerRowIndex == -1 {
       respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
       return
     }
 
-    headers := rows[0]
-    for i := 1; i < len(rows); i++ {
-      row := rows[i]
-      if len(row) < 3 { continue } // Skip invalid rows
+    fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+      "id": {"id"},
+      "kode": {"kode"},
+      "nama": {"nama"},
+      "kelompok": {"kelompok"},
+      "fase": {"fase"},
+      "jp_per_minggu": {"jp per minggu", "jp_per_minggu", "jp", "jam pelajaran"},
+      "guru": {"guru"},
+      "keterangan": {"keterangan"},
+    })
 
+    for i := headerRowIndex + 1; i < len(rows); i++ {
+      row := rows[i]
       item := make(map[string]any)
-      for j, h := range headers {
-        if j < len(row) {
-          item[strings.ToLower(h)] = row[j]
-        }
+      for field, idx := range fieldIndexes {
+        item[field] = getRowCell(row, idx)
       }
-      if nama, ok := item["nama"].(string); ok && nama != "" {
+      if nama := strings.TrimSpace(toStr(item["nama"])); nama != "" {
         data = append(data, item)
       }
     }
-  } else if err := json.Unmarshal(content, &data); err != nil {
-    // Try parse as CSV
-    lines := strings.Split(string(content), "\n")
-    var headers []string
-    for i, line := range lines {
-      line = strings.TrimSpace(line)
-      if line == "" || strings.HasPrefix(line, "#") { continue }
-      if i == 0 {
-        headers = strings.Split(line, ",")
-        for j := range headers { headers[j] = strings.TrimSpace(headers[j]) }
-        continue
-      }
-      values := strings.Split(line, ",")
-      if len(values) != len(headers) { continue }
+  } else if parsedJSON, err := parseJSONArray(content); err == nil {
+    data = parsedJSON
+  } else {
+    records, err := parseCSVRecords(content)
+    if err != nil {
+      respond(w, 400, map[string]any{"success": false, "message": "Format file import tidak valid"})
+      return
+    }
+    if len(records) == 0 {
+      respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+      return
+    }
+
+    fieldIndexes := buildHeaderIndex(records[0], map[string][]string{
+      "id": {"id"},
+      "kode": {"kode"},
+      "nama": {"nama"},
+      "kelompok": {"kelompok"},
+      "fase": {"fase"},
+      "jp_per_minggu": {"jp per minggu", "jp_per_minggu", "jp", "jam pelajaran"},
+      "guru": {"guru"},
+      "keterangan": {"keterangan"},
+    })
+
+    for i := 1; i < len(records); i++ {
       row := make(map[string]any)
-      for j, h := range headers {
-        row[h] = strings.TrimSpace(values[j])
+      for field, idx := range fieldIndexes {
+        row[field] = getRowCell(records[i], idx)
       }
-      if nama, ok := row["nama"].(string); ok && nama != "" {
+      if nama := strings.TrimSpace(toStr(row["nama"])); nama != "" {
         data = append(data, row)
       }
     }
@@ -1266,7 +1528,8 @@ func (a *App) importMapel(w http.ResponseWriter, r *http.Request) {
     if kelompok == "" { kelompok = "A" }
     fase := toStr(item["fase"])
     if fase == "" { fase = toStr(item["Fase"]) }
-    jpPerMinggu := toStr(item["jpPerMinggu"])
+    jpPerMinggu := toStr(item["jp_per_minggu"])
+    if jpPerMinggu == "" { jpPerMinggu = toStr(item["jpPerMinggu"]) }
     if jpPerMinggu == "" { jpPerMinggu = toStr(item["JP"]) }
     guru := toStr(item["guru"])
     if guru == "" { guru = toStr(item["Guru"]) }
@@ -1374,27 +1637,50 @@ func (a *App) importKelas(w http.ResponseWriter, r *http.Request) {
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
   defer f.Close()
 
-  rows, err := f.GetRows("Data Kelas")
+  sheetName := "Data Kelas"
+  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+    sheetName = f.GetSheetName(0)
+  }
+  rows, err := f.GetRows(sheetName)
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Data Kelas' not found"}); return }
 
-  imported := 0
-  for i := 1; i < len(rows); i++ {
-    row := rows[i]
-    if len(row) < 1 { continue }
-    nama := strings.TrimSpace(row[0])
-    if nama == "" { continue }
-    waliKelas := ""
-    if len(row) > 1 { waliKelas = strings.TrimSpace(row[1]) }
-    keterangan := ""
-    if len(row) > 2 { keterangan = strings.TrimSpace(row[2]) }
+  headerRowIndex := findHeaderRow(rows, []string{"nama kelas", "kelas", "nama"})
+  if headerRowIndex == -1 { respond(w, 400, map[string]any{"success": false, "message": "Format template data kelas tidak sesuai"}); return }
 
-    _, err = a.db.Exec(r.Context(),
-      "INSERT INTO data_kelas (nama, wali_kelas, keterangan) VALUES ($1, $2, $3) ON CONFLICT (nama) DO UPDATE SET wali_kelas=EXCLUDED.wali_kelas, keterangan=EXCLUDED.keterangan, updated_at=NOW()",
-      nama, waliKelas, keterangan)
-    if err == nil { imported++ }
+  fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+    "nama": {"nama kelas", "kelas", "nama"},
+    "wali_kelas": {"wali kelas", "wali_kelas"},
+    "keterangan": {"keterangan"},
+  })
+
+  imported := 0
+  errs := []map[string]any{}
+  for i := headerRowIndex + 1; i < len(rows); i++ {
+    row := rows[i]
+    nama := getRowCell(row, fieldIndexes["nama"])
+    if nama == "" { continue }
+    waliKelas := getRowCell(row, fieldIndexes["wali_kelas"])
+    keterangan := getRowCell(row, fieldIndexes["keterangan"])
+
+    var id string
+    err = a.db.QueryRow(r.Context(), "SELECT id FROM data_kelas WHERE nama=$1", nama).Scan(&id)
+    if err == nil {
+      _, err = a.db.Exec(r.Context(),
+        "UPDATE data_kelas SET wali_kelas=$1, keterangan=$2, updated_at=NOW() WHERE id=$3",
+        waliKelas, nullIfEmpty(keterangan), id)
+    } else {
+      _, err = a.db.Exec(r.Context(),
+        "INSERT INTO data_kelas (nama, wali_kelas, keterangan) VALUES ($1, $2, $3)",
+        nama, waliKelas, nullIfEmpty(keterangan))
+    }
+    if err == nil {
+      imported++
+    } else {
+      errs = append(errs, map[string]any{"nama": nama, "error": err.Error()})
+    }
   }
 
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d kelas", imported)})
+  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d kelas", imported), "data": map[string]any{"imported": imported, "errors": errs}})
 }
 
 func (a *App) exportEkstra(w http.ResponseWriter, r *http.Request) {
@@ -1482,35 +1768,64 @@ func (a *App) importEkstra(w http.ResponseWriter, r *http.Request) {
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
   defer f.Close()
 
-  rows, err := f.GetRows("Ekstrakurikuler")
+  sheetName := "Ekstrakurikuler"
+  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+    sheetName = f.GetSheetName(0)
+  }
+  rows, err := f.GetRows(sheetName)
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Ekstrakurikuler' not found"}); return }
 
+  headerRowIndex := findHeaderRow(rows, []string{"nama"}, []string{"kode"})
+  if headerRowIndex == -1 { respond(w, 400, map[string]any{"success": false, "message": "Format template ekstrakurikuler tidak sesuai"}); return }
+
+  fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+    "kode": {"kode"},
+    "nama": {"nama"},
+    "jenis": {"jenis"},
+    "pembina": {"pembina"},
+    "jadwal": {"jadwal"},
+    "tempat": {"tempat"},
+    "keterangan": {"keterangan"},
+  })
+
   imported := 0
-  for i := 1; i < len(rows); i++ {
+  errs := []map[string]any{}
+  for i := headerRowIndex + 1; i < len(rows); i++ {
     row := rows[i]
-    if len(row) < 2 { continue }
-    kode := strings.TrimSpace(row[0])
-    nama := strings.TrimSpace(row[1])
+    kode := getRowCell(row, fieldIndexes["kode"])
+    nama := getRowCell(row, fieldIndexes["nama"])
     if nama == "" { continue }
     
-    jenis := "Wajib"
-    if len(row) > 2 { jenis = strings.TrimSpace(row[2]) }
-    pembina := ""
-    if len(row) > 3 { pembina = strings.TrimSpace(row[3]) }
-    jadwal := ""
-    if len(row) > 4 { jadwal = strings.TrimSpace(row[4]) }
-    tempat := ""
-    if len(row) > 5 { tempat = strings.TrimSpace(row[5]) }
-    keterangan := ""
-    if len(row) > 6 { keterangan = strings.TrimSpace(row[6]) }
+    jenis := coalesceVal(getRowCell(row, fieldIndexes["jenis"]), "Wajib")
+    pembina := getRowCell(row, fieldIndexes["pembina"])
+    jadwal := getRowCell(row, fieldIndexes["jadwal"])
+    tempat := getRowCell(row, fieldIndexes["tempat"])
+    keterangan := getRowCell(row, fieldIndexes["keterangan"])
 
-    _, err = a.db.Exec(r.Context(),
-      "INSERT INTO ekstrakurikuler (kode, nama, jenis, pembina, jadwal, tempat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (kode) DO UPDATE SET nama=EXCLUDED.nama, jenis=EXCLUDED.jenis, pembina=EXCLUDED.pembina, jadwal=EXCLUDED.jadwal, tempat=EXCLUDED.tempat, keterangan=EXCLUDED.keterangan, updated_at=NOW()",
-      kode, nama, jenis, pembina, jadwal, tempat, keterangan)
-    if err == nil { imported++ }
+    var id string
+    if kode != "" {
+      err = a.db.QueryRow(r.Context(), "SELECT id FROM ekstrakurikuler WHERE kode=$1", kode).Scan(&id)
+    } else {
+      err = a.db.QueryRow(r.Context(), "SELECT id FROM ekstrakurikuler WHERE nama=$1", nama).Scan(&id)
+    }
+
+    if err == nil {
+      _, err = a.db.Exec(r.Context(),
+        "UPDATE ekstrakurikuler SET kode=$1, nama=$2, jenis=$3, pembina=$4, jadwal=$5, tempat=$6, keterangan=$7, updated_at=NOW() WHERE id=$8",
+        nullIfEmpty(kode), nama, jenis, nullIfEmpty(pembina), nullIfEmpty(jadwal), nullIfEmpty(tempat), nullIfEmpty(keterangan), id)
+    } else {
+      _, err = a.db.Exec(r.Context(),
+        "INSERT INTO ekstrakurikuler (kode, nama, jenis, pembina, jadwal, tempat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+        nullIfEmpty(kode), nama, jenis, nullIfEmpty(pembina), nullIfEmpty(jadwal), nullIfEmpty(tempat), nullIfEmpty(keterangan))
+    }
+    if err == nil {
+      imported++
+    } else {
+      errs = append(errs, map[string]any{"kode": kode, "nama": nama, "error": err.Error()})
+    }
   }
 
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d ekstrakurikuler", imported)})
+  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d ekstrakurikuler", imported), "data": map[string]any{"imported": imported, "errors": errs}})
 }
 
 func (a *App) exportMutasi(w http.ResponseWriter, r *http.Request) {
@@ -1600,33 +1915,44 @@ func (a *App) importMutasi(w http.ResponseWriter, r *http.Request) {
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
   defer f.Close()
 
-  rows, err := f.GetRows("Mutasi")
+  sheetName := "Mutasi"
+  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+    sheetName = f.GetSheetName(0)
+  }
+  rows, err := f.GetRows(sheetName)
   if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Mutasi' not found"}); return }
 
+  headerRowIndex := findHeaderRow(rows, []string{"nisn"}, []string{"jenis"})
+  if headerRowIndex == -1 { respond(w, 400, map[string]any{"success": false, "message": "Format template mutasi tidak sesuai"}); return }
+
+  fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+    "nisn": {"nisn"},
+    "jenis": {"jenis"},
+    "tanggal": {"tanggal"},
+    "asal_sekolah": {"asal sekolah"},
+    "tujuan_sekolah": {"tujuan sekolah"},
+    "alasan": {"alasan"},
+    "nomor_surat": {"nomor surat"},
+    "keterangan": {"keterangan"},
+  })
+
   imported := 0
-  for i := 1; i < len(rows); i++ {
+  for i := headerRowIndex + 1; i < len(rows); i++ {
     row := rows[i]
-    if len(row) < 2 { continue }
-    nisn := strings.TrimSpace(row[0])
-    jenis := strings.TrimSpace(row[1])
+    nisn := getRowCell(row, fieldIndexes["nisn"])
+    jenis := getRowCell(row, fieldIndexes["jenis"])
     if nisn == "" || jenis == "" { continue }
 
     var siswaID string
     err := a.db.QueryRow(r.Context(), "SELECT id FROM data_siswa WHERE nisn=$1", nisn).Scan(&siswaID)
     if err != nil { continue } // Skip if student not found
 
-    tanggal := ""
-    if len(row) > 2 { tanggal = strings.TrimSpace(row[2]) }
-    asal := ""
-    if len(row) > 3 { asal = strings.TrimSpace(row[3]) }
-    tujuan := ""
-    if len(row) > 4 { tujuan = strings.TrimSpace(row[4]) }
-    alasan := ""
-    if len(row) > 5 { alasan = strings.TrimSpace(row[5]) }
-    nomor := ""
-    if len(row) > 6 { nomor = strings.TrimSpace(row[6]) }
-    ket := ""
-    if len(row) > 7 { ket = strings.TrimSpace(row[7]) }
+    tanggal := getRowCell(row, fieldIndexes["tanggal"])
+    asal := getRowCell(row, fieldIndexes["asal_sekolah"])
+    tujuan := getRowCell(row, fieldIndexes["tujuan_sekolah"])
+    alasan := getRowCell(row, fieldIndexes["alasan"])
+    nomor := getRowCell(row, fieldIndexes["nomor_surat"])
+    ket := getRowCell(row, fieldIndexes["keterangan"])
 
     _, err = a.db.Exec(r.Context(),
       "INSERT INTO mutasi (siswa_id, jenis, tanggal, asal_sekolah, tujuan_sekolah, alasan, nomor_surat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",

@@ -182,12 +182,14 @@ export const siswaAPI = {
   
   delete: (id) => apiCall(`/siswa/${id}`, { method: 'DELETE' }),
   
-  bulkImport: (students) => 
-    apiCall('/siswa/bulk', {
+  bulkImport: (formData) =>
+    fetch(`${API_URL}/siswa/import`, {
       method: 'POST',
-      body: JSON.stringify({ students }),
-    }),
-};
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+      body: formData,
+    }).then(res => res.json()),};
 
 // Mata Pelajaran API
 export const mapelAPI = {
