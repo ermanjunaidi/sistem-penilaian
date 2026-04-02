@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Plus, Edit, Trash2, School, Search, Users } from 'lucide-react';
-import { usersAPI } from '../../services/api';
+import { Plus, Edit, Trash2, School, Search, Users, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { usersAPI, kelasAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import AddDataMenu from '../../components/common/AddDataMenu';
 
 const INITIAL_FORM = {
   nama: '',
@@ -15,13 +16,26 @@ const INITIAL_FORM = {
 export default function DataKelas() {
   const { dataKelas, setDataKelas, dataSiswa, generateId } = useApp();
   const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editingKelas, setEditingKelas] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState(INITIAL_FORM);
   const [waliKelasOptions, setWaliKelasOptions] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+
+  const fetchKelas = async () => {
+    try {
+      const res = await kelasAPI.getAll();
+      setDataKelas(res.data || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
+    fetchKelas();
     let active = true;
 
     const fetchWaliKelas = async () => {
@@ -111,40 +125,35 @@ export default function DataKelas() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    const selectedWaliKelas = waliKelasOptions.find((user) => user.id === formData.waliKelasId);
 
     const payload = {
       nama: formData.nama.trim().toUpperCase(),
-      waliKelasId: formData.waliKelasId,
-      waliKelas: selectedWaliKelas?.nama || '',
+      waliKelasId: formData.waliKelasId || null,
+      waliKelas: formData.waliKelas || '',
       keterangan: formData.keterangan.trim(),
     };
 
     if (!payload.nama) return;
 
-    const duplicate = dataKelas.find(
-      (kelas) => kelas.nama === payload.nama && kelas.id !== editingKelas?.id
-    );
-    if (duplicate) {
-      window.alert('Nama kelas sudah ada.');
-      return;
+    try {
+      setIsProcessing(true);
+      if (editingKelas) {
+        await kelasAPI.update(editingKelas.id, payload);
+      } else {
+        await kelasAPI.create(payload);
+      }
+      await fetchKelas();
+      handleCloseModal();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsProcessing(false);
     }
-
-    if (editingKelas) {
-      setDataKelas((prev) =>
-        prev.map((kelas) => (kelas.id === editingKelas.id ? { ...kelas, ...payload } : kelas))
-      );
-    } else {
-      setDataKelas((prev) => [...prev, { id: generateId(), ...payload }]);
-    }
-
-    handleCloseModal();
   };
 
-  const handleDelete = (kelas) => {
+  const handleDelete = async (kelas) => {
     const jumlahSiswa = jumlahSiswaByKelas[kelas.nama] || 0;
     if (jumlahSiswa > 0) {
       window.alert(`Kelas ${kelas.nama} masih dipakai oleh ${jumlahSiswa} siswa.`);
@@ -152,8 +161,52 @@ export default function DataKelas() {
     }
 
     if (window.confirm(`Hapus kelas ${kelas.nama}?`)) {
-      setDataKelas((prev) => prev.filter((item) => item.id !== kelas.id));
+      try {
+        await kelasAPI.delete(kelas.id);
+        await fetchKelas();
+      } catch (err) {
+        alert(err.message);
+      }
     }
+  };
+
+  const handleExport = async () => {
+    try {
+      const blob = await kelasAPI.export();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `data_kelas_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) { alert(err.message); }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await kelasAPI.downloadTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_data_kelas.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) { alert(err.message); }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    const fd = new FormData();
+    fd.append('file', importFile);
+    try {
+      setIsProcessing(true);
+      const res = await kelasAPI.import(fd);
+      alert(res.message);
+      await fetchKelas();
+      setShowImportModal(false);
+    } catch (err) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
   return (
@@ -161,10 +214,15 @@ export default function DataKelas() {
       <div className="page-header">
         <h1 className="page-title">Data Kelas</h1>
         <div className="flex gap-1">
-          <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-            <Plus size={18} />
-            Tambah Kelas
-          </button>
+          <AddDataMenu
+            label="Tambah Data"
+            actions={[
+              hasPermission('admin') && { label: 'Tambah Kelas', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
+              { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
+              { label: 'Export Excel', icon: <Download size={18} />, onClick: handleExport },
+              hasPermission('admin') && { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
+            ].filter(Boolean)}
+          />
         </div>
       </div>
 
@@ -229,12 +287,16 @@ export default function DataKelas() {
                     <td data-label="Keterangan">{kelas.keterangan || '-'}</td>
                     <td data-label="Aksi">
                       <div className="actions">
-                        <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(kelas)}>
-                          <Edit size={16} />
-                        </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(kelas)}>
-                          <Trash2 size={16} />
-                        </button>
+                        {hasPermission('admin') && (
+                          <>
+                            <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(kelas)}>
+                              <Edit size={16} />
+                            </button>
+                            <button className="btn btn-sm btn-danger" onClick={() => handleDelete(kelas)}>
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -279,9 +341,9 @@ export default function DataKelas() {
                   <div className="form-group">
                     <label className="form-label">Wali Kelas</label>
                     <select
-                      name="waliKelasId"
+                      name="waliKelas"
                       className="form-select"
-                      value={formData.waliKelasId}
+                      value={formData.waliKelas}
                       onChange={handleChange}
                       disabled={loadingUsers}
                     >
@@ -294,11 +356,6 @@ export default function DataKelas() {
                         </option>
                       ))}
                     </select>
-                    {!loadingUsers && waliKelasOptions.length === 0 && (
-                      <p style={{ marginTop: 8, fontSize: '0.8125rem', color: '#dc2626' }}>
-                        Belum ada user dengan role wali_kelas.
-                      </p>
-                    )}
                   </div>
                   <div className="form-group full-width">
                     <label className="form-label">Keterangan</label>
@@ -314,12 +371,38 @@ export default function DataKelas() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingKelas ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={isProcessing}>
+                  {isProcessing ? 'Memproses...' : (editingKelas ? 'Update' : 'Simpan')}
+                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Import Data Kelas</h3>
+              <button className="btn btn-sm btn-secondary" onClick={() => setShowImportModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">File Excel (.xlsx) *</label>
+                <input type="file" accept=".xlsx" onChange={(e) => setImportFile(e.target.files[0])} className="form-input" />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowImportModal(false)}>Batal</button>
+              <button className="btn btn-primary" onClick={handleImport} disabled={!importFile || isProcessing}>
+                {isProcessing ? 'Mengimport...' : 'Import'}
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
+

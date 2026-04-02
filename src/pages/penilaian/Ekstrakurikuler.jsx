@@ -1,13 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Plus, Edit, Trash2, Users, Award } from 'lucide-react';
+import { Plus, Edit, Trash2, Users, Award, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { ekstraAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import AddDataMenu from '../../components/common/AddDataMenu';
 
 export default function Ekstrakurikuler() {
-  const { ekstrakurikuler, setEkstrakurikuler, generateId } = useApp();
+  const { ekstrakurikuler, setEkstrakurikuler } = useApp();
   const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [importFile, setImportFile] = useState(null);
   const [formData, setFormData] = useState({
     kode: '',
     nama: '',
@@ -17,6 +22,17 @@ export default function Ekstrakurikuler() {
     tempat: '',
     keterangan: ''
   });
+
+  const fetchEkstra = async () => {
+    try {
+      const res = await ekstraAPI.getAll();
+      setEkstrakurikuler(res.data || []);
+    } catch (err) { console.error(err); }
+  };
+
+  useEffect(() => {
+    fetchEkstra();
+  }, []);
 
   const handleOpenModal = (item = null) => {
     if (item) {
@@ -42,20 +58,66 @@ export default function Ekstrakurikuler() {
     setEditingItem(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (editingItem) {
-      setEkstrakurikuler(prev => prev.map(e => e.id === editingItem.id ? { ...formData, id: e.id } : e));
-    } else {
-      setEkstrakurikuler(prev => [...prev, { ...formData, id: generateId() }]);
-    }
-    handleCloseModal();
+    try {
+      setIsProcessing(true);
+      if (editingItem) {
+        await ekstraAPI.update(editingItem.id, formData);
+      } else {
+        await ekstraAPI.create(formData);
+      }
+      await fetchEkstra();
+      handleCloseModal();
+    } catch (err) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus ekstrakurikuler ini?')) {
-      setEkstrakurikuler(prev => prev.filter(e => e.id !== id));
+      try {
+        await ekstraAPI.delete(id);
+        await fetchEkstra();
+      } catch (err) { alert(err.message); }
     }
+  };
+
+  const handleExport = async () => {
+    try {
+      const blob = await ekstraAPI.export();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ekstrakurikuler_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) { alert(err.message); }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await ekstraAPI.downloadTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_ekstrakurikuler.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) { alert(err.message); }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    const fd = new FormData();
+    fd.append('file', importFile);
+    try {
+      setIsProcessing(true);
+      const res = await ekstraAPI.import(fd);
+      alert(res.message);
+      await fetchEkstra();
+      setShowImportModal(false);
+    } catch (err) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
   const handleChange = (e) => {
@@ -78,10 +140,15 @@ export default function Ekstrakurikuler() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Ekstrakurikuler</h1>
-        <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-          <Plus size={18} />
-          Tambah Ekstrakurikuler
-        </button>
+        <AddDataMenu
+          label="Tambah Data"
+          actions={[
+            hasPermission('admin') && { label: 'Tambah Ekstra', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
+            { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
+            { label: 'Export Excel', icon: <Download size={18} />, onClick: handleExport },
+            hasPermission('admin') && { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
+          ].filter(Boolean)}
+        />
       </div>
 
       <div className="stats-grid">
@@ -127,7 +194,7 @@ export default function Ekstrakurikuler() {
                   <td colSpan="8" className="text-center">
                     <div className="empty-state">
                       <Award size={48} className="empty-state-icon" />
-                      <p>Belum ada ekstrakurikuler. Klik "Tambah Ekstrakurikuler" untuk menambahkan.</p>
+                      <p>Belum ada ekstrakurikuler. Klik "Tambah Data" untuk menambahkan.</p>
                     </div>
                   </td>
                 </tr>
@@ -147,12 +214,16 @@ export default function Ekstrakurikuler() {
                     <td data-label="Tempat">{ekstra.tempat || '-'}</td>
                     <td data-label="Aksi">
                       <div className="actions">
-                        <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(ekstra)}>
-                          <Edit size={16} />
-                        </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(ekstra.id)}>
-                          <Trash2 size={16} />
-                        </button>
+                        {hasPermission('admin') && (
+                          <>
+                            <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(ekstra)}>
+                              <Edit size={16} />
+                            </button>
+                            <button className="btn btn-sm btn-danger" onClick={() => handleDelete(ekstra.id)}>
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -169,30 +240,6 @@ export default function Ekstrakurikuler() {
           onPageChange={setCurrentPage}
           onItemsPerPageChange={setItemsPerPage}
         />
-      </div>
-
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">Tentang Ekstrakurikuler</h3>
-        </div>
-        <div style={{ lineHeight: 1.8 }}>
-          <p><strong>Ekstrakurikuler</strong> adalah kegiatan pendidikan di luar mata pelajaran dan pelayanan konseling untuk membantu pengembangan peserta didik sesuai dengan kebutuhan, potensi, bakat, dan minat mereka.</p>
-          <br />
-          <p><strong>Jenis Ekstrakurikuler:</strong></p>
-          <ul style={{ marginLeft: 20, marginTop: 8 }}>
-            <li><strong>Wajib:</strong> Pramuka (wajib diikuti seluruh siswa)</li>
-            <li><strong>Pilihan:</strong> Kegiatan yang dipilih sesuai minat dan bakat siswa</li>
-          </ul>
-          <br />
-          <p><strong>Contoh Ekstrakurikuler Pilihan:</strong></p>
-          <ul style={{ marginLeft: 20, marginTop: 8 }}>
-            <li>Olahraga (Sepak Bola, Basket, Voli, Badminton, dll)</li>
-            <li>Seni (Musik, Tari, Teater, Lukis, dll)</li>
-            <li>Ilmiah (KIR, Robotik, Komputer, dll)</li>
-            <li>Keagamaan (Rohis, Rohkris, dll)</li>
-            <li>Lainnya (PMR, PKS, Paskibra, dll)</li>
-          </ul>
-        </div>
       </div>
 
       {showModal && (
@@ -240,9 +287,34 @@ export default function Ekstrakurikuler() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={isProcessing}>
+                  {isProcessing ? 'Memproses...' : (editingItem ? 'Update' : 'Simpan')}
+                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Import Ekstrakurikuler</h3>
+              <button className="btn btn-sm btn-secondary" onClick={() => setShowImportModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">File Excel (.xlsx) *</label>
+                <input type="file" accept=".xlsx" onChange={(e) => setImportFile(e.target.files[0])} className="form-input" />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowImportModal(false)}>Batal</button>
+              <button className="btn btn-primary" onClick={handleImport} disabled={!importFile || isProcessing}>
+                {isProcessing ? 'Mengimport...' : 'Import'}
+              </button>
+            </div>
           </div>
         </div>
       )}

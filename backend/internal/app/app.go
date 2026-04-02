@@ -278,7 +278,7 @@ func (a *App) usersRoutes() chi.Router {
   r := chi.NewRouter()
   r.With(a.authorizeHierarchy("admin")).Get("/", a.listUsers)
   r.With(a.authorizeHierarchy("admin")).Get("/action/export", a.exportUsers)
-  r.With(a.authorize("superadmin")).Post("/action/import", a.importUsers)
+  r.With(a.authorizeHierarchy("admin")).Post("/action/import", a.importUsers)
   r.With(a.authorizeHierarchy("admin")).Get("/action/template", a.downloadUserTemplate)
   r.With(a.authorizeHierarchy("admin")).Get("/{id}", a.getUser)
   r.With(a.authorizeHierarchy("admin")).Post("/", a.createUser)
@@ -289,13 +289,58 @@ func (a *App) usersRoutes() chi.Router {
 }
 
 func (a *App) exportUsers(w http.ResponseWriter, r *http.Request) {
-  rows, err := a.many(r.Context(), "SELECT id,email,nama,nip,role,status,telepon,alamat FROM users ORDER BY created_at DESC")
+  format := r.URL.Query().Get("format")
+  if format == "" { format = "xlsx" }
+
+  rows, err := a.many(r.Context(), "SELECT email,nama,nip,role,status,telepon,alamat FROM users ORDER BY created_at DESC")
   if err != nil { serverErr(w, err); return }
 
+  if format == "xlsx" {
+    f := excelize.NewFile()
+    f.SetSheetName("Sheet1", "Users")
+
+    headerStyle, _ := f.NewStyle(&excelize.Style{
+      Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+      Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+      Alignment: &excelize.Alignment{Horizontal: "center"},
+    })
+
+    headers := []string{"Email", "Nama", "NIP", "Role", "Status", "Telepon", "Alamat"}
+    for i, h := range headers {
+      cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+      f.SetCellValue("Users", cell, h)
+      f.SetCellStyle("Users", cell, cell, headerStyle)
+    }
+
+    for i, row := range rows {
+      rIdx := i + 2
+      f.SetCellValue("Users", fmt.Sprintf("A%d", rIdx), toStr(row["email"]))
+      f.SetCellValue("Users", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
+      f.SetCellValue("Users", fmt.Sprintf("C%d", rIdx), toStr(row["nip"]))
+      f.SetCellValue("Users", fmt.Sprintf("D%d", rIdx), toStr(row["role"]))
+      f.SetCellValue("Users", fmt.Sprintf("E%d", rIdx), toStr(row["status"]))
+      f.SetCellValue("Users", fmt.Sprintf("F%d", rIdx), toStr(row["telepon"]))
+      f.SetCellValue("Users", fmt.Sprintf("G%d", rIdx), toStr(row["alamat"]))
+    }
+
+    f.SetColWidth("Users", "A", "A", 25)
+    f.SetColWidth("Users", "B", "B", 25)
+    f.SetColWidth("Users", "C", "C", 20)
+    f.SetColWidth("Users", "G", "G", 40)
+
+    var buf bytes.Buffer
+    if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+
+    w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=users_export_%s.xlsx", time.Now().Format("2006-01-02")))
+    w.Write(buf.Bytes())
+    return
+  }
+
+  // Fallback to JSON
   data := make([]map[string]any, len(rows))
   for i, row := range rows {
     data[i] = map[string]any{
-      "id":      toStr(row["id"]),
       "email":   toStr(row["email"]),
       "nama":    toStr(row["nama"]),
       "nip":     toStr(row["nip"]),
@@ -313,7 +358,7 @@ func (a *App) exportUsers(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) downloadUserTemplate(w http.ResponseWriter, r *http.Request) {
   format := r.URL.Query().Get("format")
-  if format == "" { format = "csv" }
+  if format == "" { format = "xlsx" }
 
   if format == "xlsx" {
     f := excelize.NewFile()
@@ -456,6 +501,7 @@ func (a *App) importUsers(w http.ResponseWriter, r *http.Request) {
   }
 
   imported := 0
+  actor := currentUser(r)
   for _, item := range data {
     email := strings.TrimSpace(toStr(item["email"]))
     if email == "" { continue }
@@ -468,9 +514,19 @@ func (a *App) importUsers(w http.ResponseWriter, r *http.Request) {
     telepon := toStr(item["telepon"])
     alamat := toStr(item["alamat"])
 
+    // Security check: Only superadmin can create/update superadmin
+    if role == "superadmin" && (actor == nil || actor.Role != "superadmin") {
+      continue
+    }
+
+    var targetRole string
     var id string
-    err := a.db.QueryRow(r.Context(), "SELECT id FROM users WHERE email=$1", email).Scan(&id)
+    err := a.db.QueryRow(r.Context(), "SELECT id, role FROM users WHERE email=$1", email).Scan(&id, &targetRole)
     if err == nil {
+      // Security check: Only superadmin can update a superadmin account
+      if targetRole == "superadmin" && (actor == nil || actor.Role != "superadmin") {
+        continue
+      }
       // Update
       _, err = a.db.Exec(r.Context(),
         "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), nip=COALESCE(NULLIF($2,''),nip), role=COALESCE(NULLIF($3,''),role), telepon=COALESCE(NULLIF($4,''),telepon), alamat=COALESCE(NULLIF($5,''),alamat), updated_at=NOW() WHERE id=$6",
@@ -599,6 +655,13 @@ func (a *App) sekolahRoutes() chi.Router {
   r.With(a.authorizeHierarchy("admin")).Post("/sekolah", func(w http.ResponseWriter, r *http.Request) { a.simpleUpsertSingle(w, r, "data_sekolah", "Data sekolah berhasil disimpan.") })
   r.Get("/informasi", func(w http.ResponseWriter, r *http.Request) { a.simpleLatest(w, r, "informasi_umum") })
   r.With(a.authorizeHierarchy("admin")).Post("/informasi", func(w http.ResponseWriter, r *http.Request) { a.simpleUpsertSingle(w, r, "informasi_umum", "Informasi umum berhasil disimpan.") })
+  r.With(a.authorizeHierarchy("guru")).Get("/kelas/export", a.exportKelas)
+  r.With(a.authorizeHierarchy("admin")).Post("/kelas/import", a.importKelas)
+  r.With(a.authorizeHierarchy("guru")).Get("/kelas/template", a.downloadKelasTemplate)
+  r.With(a.authorizeHierarchy("guru")).Get("/kelas", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "data_kelas", nil) })
+  r.With(a.authorizeHierarchy("admin")).Post("/kelas", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "data_kelas", "Kelas berhasil ditambahkan.") })
+  r.With(a.authorizeHierarchy("admin")).Put("/kelas/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "data_kelas", "Data kelas berhasil diperbarui.") })
+  r.With(a.authorizeHierarchy("admin")).Delete("/kelas/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "data_kelas", "Kelas berhasil dihapus.") })
   return r
 }
 
@@ -641,6 +704,9 @@ func (a *App) ekstraRoutes() chi.Router {
   r.With(a.authorizeHierarchy("admin")).Post("/", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil ditambahkan.") })
   r.With(a.authorizeHierarchy("admin")).Put("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil diperbarui.") })
   r.With(a.authorizeHierarchy("admin")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil dihapus.") })
+  r.With(a.authorizeHierarchy("guru")).Get("/export", a.exportEkstra)
+  r.With(a.authorizeHierarchy("admin")).Post("/import", a.importEkstra)
+  r.With(a.authorizeHierarchy("guru")).Get("/template", a.downloadEkstraTemplate)
   r.With(a.authorizeHierarchy("guru")).Get("/penilaian/nilai", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "penilaian_ekstrakurikuler", map[string]string{"siswaId": "siswa_id", "ekstrakurikulerId": "ekstrakurikuler_id", "semester": "semester", "tahunAjaran": "tahun_ajaran"}) })
   r.With(a.authorizeHierarchy("guru")).Post("/penilaian/nilai", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "penilaian_ekstrakurikuler", "Penilaian ekstrakurikuler berhasil ditambahkan.") })
   r.With(a.authorizeHierarchy("guru")).Put("/penilaian/nilai/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "penilaian_ekstrakurikuler", "Penilaian berhasil diperbarui.") })
@@ -666,6 +732,9 @@ func (a *App) penilaianRoutes() chi.Router {
   r.With(a.authorizeHierarchy("admin")).Post("/mutasi", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "mutasi", "Mutasi berhasil ditambahkan.") })
   r.With(a.authorizeHierarchy("admin")).Put("/mutasi/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "mutasi", "Mutasi berhasil diperbarui.") })
   r.With(a.authorizeHierarchy("admin")).Delete("/mutasi/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "mutasi", "Mutasi berhasil dihapus.") })
+  r.With(a.authorizeHierarchy("admin")).Get("/mutasi/export", a.exportMutasi)
+  r.With(a.authorizeHierarchy("admin")).Post("/mutasi/import", a.importMutasi)
+  r.With(a.authorizeHierarchy("admin")).Get("/mutasi/template", a.downloadMutasiTemplate)
   return r
 }
 func (a *App) calculateNilaiAkhir(w http.ResponseWriter, r *http.Request) {
@@ -957,16 +1026,56 @@ func predikat(n int) (string, string) {
 // Export Mapel functions
 func (a *App) exportMapel(w http.ResponseWriter, r *http.Request) {
   format := r.URL.Query().Get("format")
-  if format == "" { format = "json" }
+  if format == "" { format = "xlsx" }
 
-  rows, err := a.many(r.Context(), "SELECT id,kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan FROM mata_pelajaran ORDER BY kode")
+  rows, err := a.many(r.Context(), "SELECT kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan FROM mata_pelajaran ORDER BY kode")
   if err != nil { serverErr(w, err); return }
 
-  // Transform data for frontend
+  if format == "xlsx" {
+    f := excelize.NewFile()
+    f.SetSheetName("Sheet1", "Mata Pelajaran")
+
+    headerStyle, _ := f.NewStyle(&excelize.Style{
+      Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+      Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+      Alignment: &excelize.Alignment{Horizontal: "center"},
+    })
+
+    headers := []string{"Kode", "Nama", "Kelompok", "Fase", "JP Per Minggu", "Guru", "Keterangan"}
+    for i, h := range headers {
+      cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+      f.SetCellValue("Mata Pelajaran", cell, h)
+      f.SetCellStyle("Mata Pelajaran", cell, cell, headerStyle)
+    }
+
+    for i, row := range rows {
+      rIdx := i + 2
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("A%d", rIdx), toStr(row["kode"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("C%d", rIdx), toStr(row["kelompok"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("D%d", rIdx), toStr(row["fase"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("E%d", rIdx), toStr(row["jp_per_minggu"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("F%d", rIdx), toStr(row["guru"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("G%d", rIdx), toStr(row["keterangan"]))
+    }
+
+    f.SetColWidth("Mata Pelajaran", "A", "A", 12)
+    f.SetColWidth("Mata Pelajaran", "B", "B", 30)
+    f.SetColWidth("Mata Pelajaran", "G", "G", 40)
+
+    var buf bytes.Buffer
+    if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+
+    w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mata_pelajaran_export_%s.xlsx", time.Now().Format("2006-01-02")))
+    w.Write(buf.Bytes())
+    return
+  }
+
+  // Fallback to JSON
   data := make([]map[string]any, len(rows))
   for i, row := range rows {
     data[i] = map[string]any{
-      "id":           toStr(row["id"]),
       "kode":         toStr(row["kode"]),
       "nama":         toStr(row["nama"]),
       "kelompok":     toStr(row["kelompok"]),
@@ -984,7 +1093,7 @@ func (a *App) exportMapel(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) downloadMapelTemplate(w http.ResponseWriter, r *http.Request) {
   format := r.URL.Query().Get("format")
-  if format == "" { format = "csv" }
+  if format == "" { format = "xlsx" }
 
   if format == "xlsx" {
     // Generate XLSX dynamically
@@ -1182,4 +1291,353 @@ func (a *App) importMapel(w http.ResponseWriter, r *http.Request) {
   }
 
   respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d mata pelajaran", imported), "data": map[string]int{"imported": imported}})
+}
+
+func (a *App) exportKelas(w http.ResponseWriter, r *http.Request) {
+  rows, err := a.many(r.Context(), "SELECT nama, wali_kelas, keterangan FROM data_kelas ORDER BY nama")
+  if err != nil { serverErr(w, err); return }
+
+  f := excelize.NewFile()
+  f.SetSheetName("Sheet1", "Data Kelas")
+
+  headerStyle, _ := f.NewStyle(&excelize.Style{
+    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+    Alignment: &excelize.Alignment{Horizontal: "center"},
+  })
+
+  headers := []string{"Nama Kelas", "Wali Kelas", "Keterangan"}
+  for i, h := range headers {
+    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+    f.SetCellValue("Data Kelas", cell, h)
+    f.SetCellStyle("Data Kelas", cell, cell, headerStyle)
+  }
+
+  for i, row := range rows {
+    rIdx := i + 2
+    f.SetCellValue("Data Kelas", fmt.Sprintf("A%d", rIdx), toStr(row["nama"]))
+    f.SetCellValue("Data Kelas", fmt.Sprintf("B%d", rIdx), toStr(row["wali_kelas"]))
+    f.SetCellValue("Data Kelas", fmt.Sprintf("C%d", rIdx), toStr(row["keterangan"]))
+  }
+
+  f.SetColWidth("Data Kelas", "A", "A", 15)
+  f.SetColWidth("Data Kelas", "B", "B", 30)
+  f.SetColWidth("Data Kelas", "C", "C", 40)
+
+  var buf bytes.Buffer
+  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+
+  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=data_kelas_export_%s.xlsx", time.Now().Format("2006-01-02")))
+  w.Write(buf.Bytes())
+}
+
+func (a *App) downloadKelasTemplate(w http.ResponseWriter, r *http.Request) {
+  f := excelize.NewFile()
+  f.SetSheetName("Sheet1", "Data Kelas")
+
+  headerStyle, _ := f.NewStyle(&excelize.Style{
+    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+    Alignment: &excelize.Alignment{Horizontal: "center"},
+  })
+
+  headers := []string{"Nama Kelas", "Wali Kelas", "Keterangan"}
+  for i, h := range headers {
+    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+    f.SetCellValue("Data Kelas", cell, h)
+    f.SetCellStyle("Data Kelas", cell, cell, headerStyle)
+  }
+
+  f.SetCellValue("Data Kelas", "A2", "7A")
+  f.SetCellValue("Data Kelas", "B2", "Budi Santoso")
+  f.SetCellValue("Data Kelas", "C2", "Keterangan kelas")
+
+  var buf bytes.Buffer
+  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+
+  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  w.Header().Set("Content-Disposition", "attachment; filename=template_data_kelas.xlsx")
+  w.Write(buf.Bytes())
+}
+
+func (a *App) importKelas(w http.ResponseWriter, r *http.Request) {
+  err := r.ParseMultipartForm(10 << 20)
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File too large"}); return }
+
+  file, _, err := r.FormFile("file")
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File not found"}); return }
+  defer file.Close()
+
+  content, _ := io.ReadAll(file)
+  f, err := excelize.OpenReader(bytes.NewReader(content))
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
+  defer f.Close()
+
+  rows, err := f.GetRows("Data Kelas")
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Data Kelas' not found"}); return }
+
+  imported := 0
+  for i := 1; i < len(rows); i++ {
+    row := rows[i]
+    if len(row) < 1 { continue }
+    nama := strings.TrimSpace(row[0])
+    if nama == "" { continue }
+    waliKelas := ""
+    if len(row) > 1 { waliKelas = strings.TrimSpace(row[1]) }
+    keterangan := ""
+    if len(row) > 2 { keterangan = strings.TrimSpace(row[2]) }
+
+    _, err = a.db.Exec(r.Context(),
+      "INSERT INTO data_kelas (nama, wali_kelas, keterangan) VALUES ($1, $2, $3) ON CONFLICT (nama) DO UPDATE SET wali_kelas=EXCLUDED.wali_kelas, keterangan=EXCLUDED.keterangan, updated_at=NOW()",
+      nama, waliKelas, keterangan)
+    if err == nil { imported++ }
+  }
+
+  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d kelas", imported)})
+}
+
+func (a *App) exportEkstra(w http.ResponseWriter, r *http.Request) {
+  rows, err := a.many(r.Context(), "SELECT kode, nama, jenis, pembina, jadwal, tempat, keterangan FROM ekstrakurikuler ORDER BY kode")
+  if err != nil { serverErr(w, err); return }
+
+  f := excelize.NewFile()
+  f.SetSheetName("Sheet1", "Ekstrakurikuler")
+
+  headerStyle, _ := f.NewStyle(&excelize.Style{
+    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+    Alignment: &excelize.Alignment{Horizontal: "center"},
+  })
+
+  headers := []string{"Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
+  for i, h := range headers {
+    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+    f.SetCellValue("Ekstrakurikuler", cell, h)
+    f.SetCellStyle("Ekstrakurikuler", cell, cell, headerStyle)
+  }
+
+  for i, row := range rows {
+    rIdx := i + 2
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("A%d", rIdx), toStr(row["kode"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("C%d", rIdx), toStr(row["jenis"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("D%d", rIdx), toStr(row["pembina"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("E%d", rIdx), toStr(row["jadwal"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("F%d", rIdx), toStr(row["tempat"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("G%d", rIdx), toStr(row["keterangan"]))
+  }
+
+  f.SetColWidth("Ekstrakurikuler", "A", "A", 15)
+  f.SetColWidth("Ekstrakurikuler", "B", "B", 30)
+  f.SetColWidth("Ekstrakurikuler", "G", "G", 40)
+
+  var buf bytes.Buffer
+  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+
+  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=ekstrakurikuler_export_%s.xlsx", time.Now().Format("2006-01-02")))
+  w.Write(buf.Bytes())
+}
+
+func (a *App) downloadEkstraTemplate(w http.ResponseWriter, r *http.Request) {
+  f := excelize.NewFile()
+  f.SetSheetName("Sheet1", "Ekstrakurikuler")
+
+  headerStyle, _ := f.NewStyle(&excelize.Style{
+    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+    Alignment: &excelize.Alignment{Horizontal: "center"},
+  })
+
+  headers := []string{"Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
+  for i, h := range headers {
+    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+    f.SetCellValue("Ekstrakurikuler", cell, h)
+    f.SetCellStyle("Ekstrakurikuler", cell, cell, headerStyle)
+  }
+
+  f.SetCellValue("Ekstrakurikuler", "A2", "PRAMUKA")
+  f.SetCellValue("Ekstrakurikuler", "B2", "Pramuka Wajib")
+  f.SetCellValue("Ekstrakurikuler", "C2", "Wajib")
+
+  var buf bytes.Buffer
+  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+
+  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  w.Header().Set("Content-Disposition", "attachment; filename=template_ekstrakurikuler.xlsx")
+  w.Write(buf.Bytes())
+}
+
+func (a *App) importEkstra(w http.ResponseWriter, r *http.Request) {
+  err := r.ParseMultipartForm(10 << 20)
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File too large"}); return }
+
+  file, _, err := r.FormFile("file")
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File not found"}); return }
+  defer file.Close()
+
+  content, _ := io.ReadAll(file)
+  f, err := excelize.OpenReader(bytes.NewReader(content))
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
+  defer f.Close()
+
+  rows, err := f.GetRows("Ekstrakurikuler")
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Ekstrakurikuler' not found"}); return }
+
+  imported := 0
+  for i := 1; i < len(rows); i++ {
+    row := rows[i]
+    if len(row) < 2 { continue }
+    kode := strings.TrimSpace(row[0])
+    nama := strings.TrimSpace(row[1])
+    if nama == "" { continue }
+    
+    jenis := "Wajib"
+    if len(row) > 2 { jenis = strings.TrimSpace(row[2]) }
+    pembina := ""
+    if len(row) > 3 { pembina = strings.TrimSpace(row[3]) }
+    jadwal := ""
+    if len(row) > 4 { jadwal = strings.TrimSpace(row[4]) }
+    tempat := ""
+    if len(row) > 5 { tempat = strings.TrimSpace(row[5]) }
+    keterangan := ""
+    if len(row) > 6 { keterangan = strings.TrimSpace(row[6]) }
+
+    _, err = a.db.Exec(r.Context(),
+      "INSERT INTO ekstrakurikuler (kode, nama, jenis, pembina, jadwal, tempat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (kode) DO UPDATE SET nama=EXCLUDED.nama, jenis=EXCLUDED.jenis, pembina=EXCLUDED.pembina, jadwal=EXCLUDED.jadwal, tempat=EXCLUDED.tempat, keterangan=EXCLUDED.keterangan, updated_at=NOW()",
+      kode, nama, jenis, pembina, jadwal, tempat, keterangan)
+    if err == nil { imported++ }
+  }
+
+  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d ekstrakurikuler", imported)})
+}
+
+func (a *App) exportMutasi(w http.ResponseWriter, r *http.Request) {
+  rows, err := a.many(r.Context(), "SELECT s.nama, s.nisn, m.jenis, m.tanggal, m.asal_sekolah, m.tujuan_sekolah, m.alasan, m.nomor_surat, m.keterangan FROM mutasi m JOIN data_siswa s ON m.siswa_id = s.id ORDER BY m.created_at DESC")
+  if err != nil { serverErr(w, err); return }
+
+  f := excelize.NewFile()
+  f.SetSheetName("Sheet1", "Mutasi Siswa")
+
+  headerStyle, _ := f.NewStyle(&excelize.Style{
+    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+    Alignment: &excelize.Alignment{Horizontal: "center"},
+  })
+
+  headers := []string{"Nama Siswa", "NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
+  for i, h := range headers {
+    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+    f.SetCellValue("Mutasi Siswa", cell, h)
+    f.SetCellStyle("Mutasi Siswa", cell, cell, headerStyle)
+  }
+
+  for i, row := range rows {
+    rIdx := i + 2
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("A%d", rIdx), toStr(row["nama"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("B%d", rIdx), toStr(row["nisn"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("C%d", rIdx), toStr(row["jenis"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("D%d", rIdx), toStr(row["tanggal"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("E%d", rIdx), toStr(row["asal_sekolah"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("F%d", rIdx), toStr(row["tujuan_sekolah"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("G%d", rIdx), toStr(row["alasan"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("H%d", rIdx), toStr(row["nomor_surat"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("I%d", rIdx), toStr(row["keterangan"]))
+  }
+
+  f.SetColWidth("Mutasi Siswa", "A", "A", 25)
+  f.SetColWidth("Mutasi Siswa", "B", "B", 15)
+  f.SetColWidth("Mutasi Siswa", "G", "I", 30)
+
+  var buf bytes.Buffer
+  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+
+  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mutasi_export_%s.xlsx", time.Now().Format("2006-01-02")))
+  w.Write(buf.Bytes())
+}
+
+func (a *App) downloadMutasiTemplate(w http.ResponseWriter, r *http.Request) {
+  f := excelize.NewFile()
+  f.SetSheetName("Sheet1", "Mutasi")
+
+  headerStyle, _ := f.NewStyle(&excelize.Style{
+    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+    Alignment: &excelize.Alignment{Horizontal: "center"},
+  })
+
+  headers := []string{"NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
+  for i, h := range headers {
+    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+    f.SetCellValue("Mutasi", cell, h)
+    f.SetCellStyle("Mutasi", cell, cell, headerStyle)
+  }
+
+  f.SetCellValue("Mutasi", "A2", "1234567890")
+  f.SetCellValue("Mutasi", "B2", "Masuk")
+  f.SetCellValue("Mutasi", "C2", "2024-01-01")
+
+  var buf bytes.Buffer
+  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+
+  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+  w.Header().Set("Content-Disposition", "attachment; filename=template_mutasi.xlsx")
+  w.Write(buf.Bytes())
+}
+
+func (a *App) importMutasi(w http.ResponseWriter, r *http.Request) {
+  err := r.ParseMultipartForm(10 << 20)
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File too large"}); return }
+
+  file, _, err := r.FormFile("file")
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File not found"}); return }
+  defer file.Close()
+
+  content, _ := io.ReadAll(file)
+  f, err := excelize.OpenReader(bytes.NewReader(content))
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
+  defer f.Close()
+
+  rows, err := f.GetRows("Mutasi")
+  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Mutasi' not found"}); return }
+
+  imported := 0
+  for i := 1; i < len(rows); i++ {
+    row := rows[i]
+    if len(row) < 2 { continue }
+    nisn := strings.TrimSpace(row[0])
+    jenis := strings.TrimSpace(row[1])
+    if nisn == "" || jenis == "" { continue }
+
+    var siswaID string
+    err := a.db.QueryRow(r.Context(), "SELECT id FROM data_siswa WHERE nisn=$1", nisn).Scan(&siswaID)
+    if err != nil { continue } // Skip if student not found
+
+    tanggal := ""
+    if len(row) > 2 { tanggal = strings.TrimSpace(row[2]) }
+    asal := ""
+    if len(row) > 3 { asal = strings.TrimSpace(row[3]) }
+    tujuan := ""
+    if len(row) > 4 { tujuan = strings.TrimSpace(row[4]) }
+    alasan := ""
+    if len(row) > 5 { alasan = strings.TrimSpace(row[5]) }
+    nomor := ""
+    if len(row) > 6 { nomor = strings.TrimSpace(row[6]) }
+    ket := ""
+    if len(row) > 7 { ket = strings.TrimSpace(row[7]) }
+
+    _, err = a.db.Exec(r.Context(),
+      "INSERT INTO mutasi (siswa_id, jenis, tanggal, asal_sekolah, tujuan_sekolah, alasan, nomor_surat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+      siswaID, jenis, tanggal, asal, tujuan, alasan, nomor, ket)
+    if err == nil { 
+      imported++ 
+      status := "Aktif"
+      if jenis == "Keluar" { status = "Pindah" }
+      a.db.Exec(r.Context(), "UPDATE data_siswa SET status=$1, updated_at=NOW() WHERE id=$2", status, siswaID)
+    }
+  }
+
+  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d data mutasi", imported)})
 }

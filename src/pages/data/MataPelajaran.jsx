@@ -111,24 +111,24 @@ export default function MataPelajaran() {
   };
 
   // Export functions
-  const handleExport = async (format = 'json') => {
+  const handleExport = async () => {
     try {
-      const data = await mapelAPI.export(format);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const blob = await mapelAPI.export('xlsx');
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `mata_pelajaran_export_${new Date().toISOString().split('T')[0]}.${format}`;
+      a.download = `mata_pelajaran_export_${new Date().toISOString().split('T')[0]}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      setSuccessMessage('Data mata pelajaran berhasil diexport.');
     } catch (error) {
-      alert('Gagal export data: ' + error.message);
+      setError('Gagal export data: ' + error.message);
     }
   };
 
-  const handleDownloadTemplate = async (format = 'csv') => {
+  const handleDownloadTemplate = async (format = 'xlsx') => {
     try {
       console.log('Downloading template:', format);
       const blob = await mapelAPI.downloadTemplate(format);
@@ -136,14 +136,13 @@ export default function MataPelajaran() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `template_mata_pelajaran.${format === 'xlsx' ? 'xlsx' : format}`;
+      a.download = `template_mata_pelajaran.${format}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Download error:', error);
-      alert('Gagal download template: ' + error.message);
+      setError('Gagal download template: ' + error.message);
     }
   };
 
@@ -278,9 +277,9 @@ export default function MataPelajaran() {
                 onClick: () => handleDownloadTemplate('xlsx'),
               },
               {
-                label: 'Export Data',
+                label: 'Export Excel',
                 icon: <Download size={18} />,
-                onClick: () => handleExport('json'),
+                onClick: handleExport,
               },
               hasPermission('wali_kelas') && {
                 label: 'Import Data',

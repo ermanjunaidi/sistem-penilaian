@@ -1,14 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { siswaAPI } from '../../services/api';
-import { Plus, Edit, Trash2, UserPlus, FileText } from 'lucide-react';
+import { mutasiAPI, hasPermission } from '../../services/api';
+import { Plus, Edit, Trash2, UserPlus, FileText, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import AddDataMenu from '../../components/common/AddDataMenu';
 
 export default function Mutasi() {
-  const { mutasi, setMutasi, dataSiswa, refreshDataSiswa, generateId } = useApp();
+  const { mutasi, setMutasi, dataSiswa, refreshDataSiswa } = useApp();
   const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [importFile, setImportFile] = useState(null);
   const [formData, setFormData] = useState({
     siswaId: '',
     jenis: 'Masuk',
@@ -19,6 +23,17 @@ export default function Mutasi() {
     keterangan: '',
     nomorSurat: ''
   });
+
+  const fetchMutasi = async () => {
+    try {
+      const res = await mutasiAPI.getAll();
+      setMutasi(res.data || []);
+    } catch (err) { console.error(err); }
+  };
+
+  useEffect(() => {
+    fetchMutasi();
+  }, []);
 
   const handleOpenModal = (item = null) => {
     if (item) {
@@ -51,30 +66,67 @@ export default function Mutasi() {
   };
 
   const handleSaveMutasi = async () => {
-    if (editingItem) {
-      setMutasi(prev => prev.map(m => m.id === editingItem.id ? { ...formData, id: m.id } : m));
-    } else {
-      const newMutasi = { ...formData, id: generateId() };
-      setMutasi(prev => [...prev, newMutasi]);
-    }
-
-    if (formData.siswaId) {
-      const updatedStatus = formData.jenis === 'Masuk' ? 'Aktif' : 'Pindah';
-      try {
-        await siswaAPI.update(formData.siswaId, { status: updatedStatus });
-        await refreshDataSiswa();
-      } catch (err) {
-        window.alert(err.message || 'Status siswa gagal diperbarui.');
+    try {
+      setIsProcessing(true);
+      if (editingItem) {
+        await mutasiAPI.update(editingItem.id, formData);
+      } else {
+        await mutasiAPI.create(formData);
       }
-    }
-
-    handleCloseModal();
+      await fetchMutasi();
+      await refreshDataSiswa();
+      handleCloseModal();
+    } catch (err) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus data mutasi ini?')) {
-      setMutasi(prev => prev.filter(m => m.id !== id));
+      try {
+        await mutasiAPI.delete(id);
+        await fetchMutasi();
+        await refreshDataSiswa();
+      } catch (err) { alert(err.message); }
     }
+  };
+
+  const handleExport = async () => {
+    try {
+      const blob = await mutasiAPI.export();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mutasi_export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) { alert(err.message); }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await mutasiAPI.downloadTemplate();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'template_mutasi.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) { alert(err.message); }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    const fd = new FormData();
+    fd.append('file', importFile);
+    try {
+      setIsProcessing(true);
+      const res = await mutasiAPI.import(fd);
+      alert(res.message);
+      await fetchMutasi();
+      await refreshDataSiswa();
+      setShowImportModal(false);
+    } catch (err) { alert(err.message); } finally { setIsProcessing(false); }
   };
 
   const handleChange = (e) => {
@@ -102,10 +154,15 @@ export default function Mutasi() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Mutasi Siswa</h1>
-        <button className="btn btn-primary" onClick={() => handleOpenModal()}>
-          <Plus size={18} />
-          Tambah Mutasi
-        </button>
+        <AddDataMenu
+          label="Tambah Data"
+          actions={[
+            hasPermission('admin') && { label: 'Tambah Mutasi', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
+            { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
+            { label: 'Export Excel', icon: <Download size={18} />, onClick: handleExport },
+            hasPermission('admin') && { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
+          ].filter(Boolean)}
+        />
       </div>
 
       <div className="stats-grid">
@@ -150,7 +207,7 @@ export default function Mutasi() {
                   <td colSpan="7" className="text-center">
                     <div className="empty-state">
                       <FileText size={48} className="empty-state-icon" />
-                      <p>Belum ada data mutasi. Klik "Tambah Mutasi" untuk menambahkan.</p>
+                      <p>Belum ada data mutasi. Klik "Tambah Data" untuk menambahkan.</p>
                     </div>
                   </td>
                 </tr>
@@ -169,12 +226,16 @@ export default function Mutasi() {
                     <td data-label="Nomor Surat">{item.nomorSurat || '-'}</td>
                     <td data-label="Aksi">
                       <div className="actions">
-                        <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(item)}>
-                          <Edit size={16} />
-                        </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>
-                          <Trash2 size={16} />
-                        </button>
+                        {hasPermission('admin') && (
+                          <>
+                            <button className="btn btn-sm btn-secondary" onClick={() => handleOpenModal(item)}>
+                              <Edit size={16} />
+                            </button>
+                            <button className="btn btn-sm btn-danger" onClick={() => handleDelete(item.id)}>
+                              <Trash2 size={16} />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -191,29 +252,6 @@ export default function Mutasi() {
           onPageChange={setCurrentPage}
           onItemsPerPageChange={setItemsPerPage}
         />
-      </div>
-
-      <div className="card">
-        <div className="card-header">
-          <h3 className="card-title">Tentang Mutasi Siswa</h3>
-        </div>
-        <div style={{ lineHeight: 1.8 }}>
-          <p><strong>Mutasi Siswa</strong> adalah perpindahan peserta didik dari satu sekolah ke sekolah lain atau perpindahan status kepesertaan didikan.</p>
-          <br />
-          <p><strong>Jenis Mutasi:</strong></p>
-          <ul style={{ marginLeft: 20, marginTop: 8 }}>
-            <li><strong>Mutasi Masuk:</strong> Peserta didik pindahan dari sekolah lain</li>
-            <li><strong>Mutasi Keluar:</strong> Peserta didik yang pindah ke sekolah lain</li>
-          </ul>
-          <br />
-          <p><strong>Dokumen yang Diperlukan:</strong></p>
-          <ul style={{ marginLeft: 20, marginTop: 8 }}>
-            <li>Surat permohonan mutasi dari orang tua/wali</li>
-            <li>Surat keterangan pindah dari sekolah asal (untuk mutasi masuk)</li>
-            <li>Fotokopi rapor terakhir</li>
-            <li>Fotokopi kartu keluarga</li>
-          </ul>
-        </div>
       </div>
 
       {showModal && (
@@ -276,12 +314,38 @@ export default function Mutasi() {
               </div>
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={handleCloseModal}>Batal</button>
-                <button type="submit" className="btn btn-primary">{editingItem ? 'Update' : 'Simpan'}</button>
+                <button type="submit" className="btn btn-primary" disabled={isProcessing}>
+                  {isProcessing ? 'Memproses...' : (editingItem ? 'Update' : 'Simpan')}
+                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && (
+        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Import Data Mutasi</h3>
+              <button className="btn btn-sm btn-secondary" onClick={() => setShowImportModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">File Excel (.xlsx) *</label>
+                <input type="file" accept=".xlsx" onChange={(e) => setImportFile(e.target.files[0])} className="form-input" />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowImportModal(false)}>Batal</button>
+              <button className="btn btn-primary" onClick={handleImport} disabled={!importFile || isProcessing}>
+                {isProcessing ? 'Mengimport...' : 'Import'}
+              </button>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
+

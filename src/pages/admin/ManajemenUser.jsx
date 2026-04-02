@@ -80,13 +80,11 @@ export default function ManajemenUser() {
   const handleExport = async () => {
     try {
       setLoading(true);
-      const response = await usersAPI.export('json');
-      const data = response.data;
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const blob = await usersAPI.export('xlsx');
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `users_export_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `users_export_${new Date().toISOString().split('T')[0]}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -296,7 +294,7 @@ export default function ManajemenUser() {
                 icon: <FileDown size={18} />,
                 onClick: handleExport,
               },
-              currentUser.role === 'superadmin' && {
+              (currentUser.role === 'superadmin' || currentUser.role === 'admin') && {
                 label: 'Import Data',
                 icon: <FileUp size={18} />,
                 onClick: () => fileInputRef.current?.click(),

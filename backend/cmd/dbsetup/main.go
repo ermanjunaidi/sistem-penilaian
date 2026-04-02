@@ -202,6 +202,15 @@ func runMigration(ctx context.Context, db *pgxpool.Pool) error {
 			created_at timestamptz NOT NULL DEFAULT NOW(),
 			updated_at timestamptz NOT NULL DEFAULT NOW()
 		)`,
+		`CREATE TABLE IF NOT EXISTS data_kelas (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			nama varchar(50) NOT NULL UNIQUE,
+			wali_kelas_id uuid,
+			wali_kelas varchar(255),
+			keterangan text,
+			created_at timestamptz NOT NULL DEFAULT NOW(),
+			updated_at timestamptz NOT NULL DEFAULT NOW()
+		)`,
 		`CREATE TABLE IF NOT EXISTS ekstrakurikuler (
 			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 			kode varchar(20),
@@ -210,6 +219,19 @@ func runMigration(ctx context.Context, db *pgxpool.Pool) error {
 			pembina varchar(255),
 			jadwal varchar(255),
 			tempat varchar(255),
+			keterangan text,
+			created_at timestamptz NOT NULL DEFAULT NOW(),
+			updated_at timestamptz NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS mutasi (
+			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+			siswa_id uuid NOT NULL REFERENCES data_siswa(id) ON DELETE CASCADE,
+			jenis text NOT NULL DEFAULT 'Masuk',
+			tanggal text,
+			asal_sekolah varchar(255),
+			tujuan_sekolah varchar(255),
+			alasan text,
+			nomor_surat varchar(100),
 			keterangan text,
 			created_at timestamptz NOT NULL DEFAULT NOW(),
 			updated_at timestamptz NOT NULL DEFAULT NOW()

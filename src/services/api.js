@@ -21,13 +21,13 @@ async function apiCall(endpoint, options = {}) {
     });
 
     const contentType = response.headers.get('content-type') || '';
-    const data = contentType.includes('application/json')
-      ? await response.json()
-      : { message: response.statusText || 'Request failed' };
-
+    
     if (!response.ok) {
+      const data = contentType.includes('application/json')
+        ? await response.json()
+        : { message: response.statusText || 'Request failed' };
+
       if (response.status === 401) {
-        // Token expired or invalid
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         window.location.href = '/login';
@@ -35,7 +35,11 @@ async function apiCall(endpoint, options = {}) {
       throw new Error(data.message || 'Request failed');
     }
 
-    return data;
+    if (options.responseType === 'blob') {
+      return response.blob();
+    }
+
+    return contentType.includes('application/json') ? response.json() : response.text();
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error('Request timeout. Server terlalu lama merespons.');
@@ -108,10 +112,8 @@ export const usersAPI = {
     }),
 
   // Export/Import
-  export: (format = 'json') =>
-    apiCall(`/users/action/export?format=${format}`, {
-      method: 'GET',
-    }),
+  export: (format = 'xlsx') =>
+    apiCall(`/users/action/export?format=${format}`, { responseType: 'blob' }),
 
   import: (formData) =>
     fetch(`${API_URL}/users/action/import`, {
@@ -211,10 +213,8 @@ export const mapelAPI = {
   delete: (id) => apiCall(`/mapel/${id}`, { method: 'DELETE' }),
 
   // Export/Import
-  export: (format = 'json') =>
-    apiCall(`/mapel/export?format=${format}`, {
-      method: 'GET',
-    }),
+  export: (format = 'xlsx') =>
+    apiCall(`/mapel/export?format=${format}`, { responseType: 'blob' }),
 
   import: (formData) =>
     fetch(`${API_URL}/mapel/import`, {
@@ -225,26 +225,8 @@ export const mapelAPI = {
       body: formData,
     }).then(res => res.json()),
 
-  downloadTemplate: (format = 'csv') => {
-    const url = `${API_URL}/mapel/template?format=${format}`;
-    const token = localStorage.getItem('token');
-
-    console.log('Downloading template:', { url, tokenExists: !!token, token: token ? token.substring(0, 20) + '...' : null });
-
-    return fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    }).then(async res => {
-      console.log('Response status:', res.status, res.headers.get('content-type'));
-      if (!res.ok) {
-        const err = await res.json();
-        console.error('Download error:', err);
-        throw new Error(err.message || 'Download failed');
-      }
-      return res.blob();
-    });
-  },
+  downloadTemplate: (format = 'xlsx') =>
+    apiCall(`/mapel/template?format=${format}`, { responseType: 'blob' }),
   
   // Tujuan Pembelajaran
   getTP: (params = {}) => {
@@ -293,44 +275,56 @@ export const ekstraAPI = {
     const queryString = new URLSearchParams(params).toString();
     return apiCall(`/ekstra${queryString ? `?${queryString}` : ''}`);
   },
-  
+
   getById: (id) => apiCall(`/ekstra/${id}`),
-  
-  create: (data) => 
+
+  create: (data) =>
     apiCall('/ekstra', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  
-  update: (id, data) => 
+
+  update: (id, data) =>
     apiCall(`/ekstra/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-  
+
   delete: (id) => apiCall(`/ekstra/${id}`, { method: 'DELETE' }),
-  
+
+  export: () => apiCall('/ekstra/export', { responseType: 'blob' }),
+
+  import: (formData) =>
+    fetch(`${API_URL}/ekstra/import`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+      body: formData,
+    }).then(res => res.json()),
+
+  downloadTemplate: () => apiCall('/ekstra/template', { responseType: 'blob' }),
+
   // Penilaian Ekstrakurikuler
   getPenilaian: (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     return apiCall(`/ekstra/penilaian/nilai${queryString ? `?${queryString}` : ''}`);
   },
-  
-  createPenilaian: (data) => 
+
+  createPenilaian: (data) =>
     apiCall('/ekstra/penilaian/nilai', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  
-  updatePenilaian: (id, data) => 
+
+  updatePenilaian: (id, data) =>
     apiCall(`/ekstra/penilaian/nilai/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-  
+
   deletePenilaian: (id) => apiCall(`/ekstra/penilaian/nilai/${id}`, { method: 'DELETE' }),
 };
-
 // Penilaian API
 export const penilaianAPI = {
   // Asesmen Formatif
@@ -439,6 +433,39 @@ export const canAccess = (allowedRoles) => {
   return allowedRoles.includes(user.role);
 };
 
+// Data Kelas API
+export const kelasAPI = {
+  getAll: () => apiCall('/sekolah/kelas'),
+  create: (data) => apiCall('/sekolah/kelas', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => apiCall(`/sekolah/kelas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => apiCall(`/sekolah/kelas/${id}`, { method: 'DELETE' }),
+  export: () => apiCall('/sekolah/kelas/export', { responseType: 'blob' }),
+  import: (formData) => fetch(`${API_URL}/sekolah/kelas/import`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+    body: formData
+  }).then(res => res.json()),
+  downloadTemplate: () => apiCall('/sekolah/kelas/template', { responseType: 'blob' }),
+};
+
+// Mutasi API
+export const mutasiAPI = {
+  getAll: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiCall(`/penilaian/mutasi${queryString ? `?${queryString}` : ''}`);
+  },
+  create: (data) => apiCall('/penilaian/mutasi', { method: 'POST', body: JSON.stringify(data) }),
+  update: (id, data) => apiCall(`/penilaian/mutasi/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  delete: (id) => apiCall(`/penilaian/mutasi/${id}`, { method: 'DELETE' }),
+  export: () => apiCall('/penilaian/mutasi/export', { responseType: 'blob' }),
+  import: (formData) => fetch(`${API_URL}/penilaian/mutasi/import`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+    body: formData
+  }).then(res => res.json()),
+  downloadTemplate: () => apiCall('/penilaian/mutasi/template', { responseType: 'blob' }),
+};
+
 export default {
   auth: authAPI,
   users: usersAPI,
@@ -447,4 +474,6 @@ export default {
   mapel: mapelAPI,
   ekstra: ekstraAPI,
   penilaian: penilaianAPI,
+  kelas: kelasAPI,
+  mutasi: mutasiAPI,
 };
