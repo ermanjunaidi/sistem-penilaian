@@ -160,7 +160,7 @@ export default function BukuInduk() {
   // Export to Excel
   const handleExport = () => {
     const headers = [
-      'No', 'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
+      'ID', 'No', 'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
       'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua',
       'Telepon Orang Tua', 'Tanggal Masuk', 'Kelas', 'Status'
     ];
@@ -174,6 +174,7 @@ export default function BukuInduk() {
 
     filteredData.forEach((item, index) => {
       worksheetData.push([
+        item.id || '',
         index + 1,
         item.nis || '',
         item.nisn || '',
@@ -193,8 +194,8 @@ export default function BukuInduk() {
 
     const ws = XLSX.utils.aoa_to_sheet(worksheetData);
     ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 13 } }
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 14 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 14 } }
     ];
     ws['!cols'] = [
       { wch: 5 }, { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 10 },

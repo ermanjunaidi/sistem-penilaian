@@ -294,7 +294,7 @@ func (a *App) exportUsers(w http.ResponseWriter, r *http.Request) {
   format := r.URL.Query().Get("format")
   if format == "" { format = "xlsx" }
 
-  rows, err := a.many(r.Context(), "SELECT email,nama,nip,role,status,telepon,alamat FROM users ORDER BY created_at DESC")
+  rows, err := a.many(r.Context(), "SELECT id,email,nama,nip,role,status,telepon,alamat FROM users ORDER BY created_at DESC")
   if err != nil { serverErr(w, err); return }
 
   if format == "xlsx" {
@@ -307,7 +307,7 @@ func (a *App) exportUsers(w http.ResponseWriter, r *http.Request) {
       Alignment: &excelize.Alignment{Horizontal: "center"},
     })
 
-    headers := []string{"Email", "Nama", "NIP", "Role", "Status", "Telepon", "Alamat"}
+    headers := []string{"ID", "Email", "Nama", "NIP", "Role", "Status", "Telepon", "Alamat"}
     for i, h := range headers {
       cell, _ := excelize.CoordinatesToCellName(i+1, 1)
       f.SetCellValue("Users", cell, h)
@@ -316,19 +316,21 @@ func (a *App) exportUsers(w http.ResponseWriter, r *http.Request) {
 
     for i, row := range rows {
       rIdx := i + 2
-      f.SetCellValue("Users", fmt.Sprintf("A%d", rIdx), toStr(row["email"]))
-      f.SetCellValue("Users", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
-      f.SetCellValue("Users", fmt.Sprintf("C%d", rIdx), toStr(row["nip"]))
-      f.SetCellValue("Users", fmt.Sprintf("D%d", rIdx), toStr(row["role"]))
-      f.SetCellValue("Users", fmt.Sprintf("E%d", rIdx), toStr(row["status"]))
-      f.SetCellValue("Users", fmt.Sprintf("F%d", rIdx), toStr(row["telepon"]))
-      f.SetCellValue("Users", fmt.Sprintf("G%d", rIdx), toStr(row["alamat"]))
+      f.SetCellValue("Users", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+      f.SetCellValue("Users", fmt.Sprintf("B%d", rIdx), toStr(row["email"]))
+      f.SetCellValue("Users", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
+      f.SetCellValue("Users", fmt.Sprintf("D%d", rIdx), toStr(row["nip"]))
+      f.SetCellValue("Users", fmt.Sprintf("E%d", rIdx), toStr(row["role"]))
+      f.SetCellValue("Users", fmt.Sprintf("F%d", rIdx), toStr(row["status"]))
+      f.SetCellValue("Users", fmt.Sprintf("G%d", rIdx), toStr(row["telepon"]))
+      f.SetCellValue("Users", fmt.Sprintf("H%d", rIdx), toStr(row["alamat"]))
     }
 
-    f.SetColWidth("Users", "A", "A", 25)
+    f.SetColWidth("Users", "A", "A", 36)
     f.SetColWidth("Users", "B", "B", 25)
-    f.SetColWidth("Users", "C", "C", 20)
-    f.SetColWidth("Users", "G", "G", 40)
+    f.SetColWidth("Users", "C", "C", 25)
+    f.SetColWidth("Users", "D", "D", 20)
+    f.SetColWidth("Users", "H", "H", 40)
 
     var buf bytes.Buffer
     if err := f.Write(&buf); err != nil { serverErr(w, err); return }
@@ -343,6 +345,7 @@ func (a *App) exportUsers(w http.ResponseWriter, r *http.Request) {
   data := make([]map[string]any, len(rows))
   for i, row := range rows {
     data[i] = map[string]any{
+      "id":      toStr(row["id"]),
       "email":   toStr(row["email"]),
       "nama":    toStr(row["nama"]),
       "nip":     toStr(row["nip"]),
@@ -372,7 +375,7 @@ func (a *App) downloadUserTemplate(w http.ResponseWriter, r *http.Request) {
       Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
     })
 
-    headers := []string{"Email", "Password", "Nama", "NIP", "Role", "Telepon", "Alamat"}
+    headers := []string{"ID", "Email", "Password", "Nama", "NIP", "Role", "Telepon", "Alamat"}
     for i, h := range headers {
       cell, _ := excelize.CoordinatesToCellName(i+1, 1)
       f.SetCellValue("Users", cell, h)
@@ -380,8 +383,8 @@ func (a *App) downloadUserTemplate(w http.ResponseWriter, r *http.Request) {
     }
 
     samples := [][]interface{}{
-      {"guru1@school.id", "password123", "Guru Satu, S.Pd", "199001012020011001", "guru", "08123456789", "Jl. Sekolah No. 1"},
-      {"admin2@school.id", "password123", "Admin Dua", "199101012021011002", "admin", "08123456790", "Jl. Sekolah No. 2"},
+      {"", "guru1@school.id", "password123", "Guru Satu, S.Pd", "199001012020011001", "guru", "08123456789", "Jl. Sekolah No. 1"},
+      {"", "admin2@school.id", "password123", "Admin Dua", "199101012021011002", "admin", "08123456790", "Jl. Sekolah No. 2"},
     }
 
     for i, sample := range samples {
@@ -392,7 +395,7 @@ func (a *App) downloadUserTemplate(w http.ResponseWriter, r *http.Request) {
       }
     }
 
-    colWidths := []float64{25, 15, 25, 20, 12, 15, 30}
+    colWidths := []float64{36, 25, 15, 25, 20, 12, 15, 30}
     for i, w := range colWidths {
       colName := string(rune('A' + i))
       f.SetColWidth("Users", colName, colName, w)
@@ -410,9 +413,9 @@ func (a *App) downloadUserTemplate(w http.ResponseWriter, r *http.Request) {
   } else {
     w.Header().Set("Content-Type", "text/csv")
     w.Header().Set("Content-Disposition", "attachment; filename=template_users.csv")
-    template := `email,password,nama,nip,role,telepon,alamat
-guru1@school.id,password123,"Guru Satu, S.Pd",199001012020011001,guru,08123456789,Jl. Sekolah No. 1
-admin2@school.id,password123,Admin Dua,199101012021011002,admin,08123456790,Jl. Sekolah No. 2
+    template := `id,email,password,nama,nip,role,telepon,alamat
+,guru1@school.id,password123,"Guru Satu, S.Pd",199001012020011001,guru,08123456789,Jl. Sekolah No. 1
+,admin2@school.id,password123,Admin Dua,199101012021011002,admin,08123456790,Jl. Sekolah No. 2
 `
     w.Write([]byte(template))
   }
@@ -1268,7 +1271,7 @@ func (a *App) exportMapel(w http.ResponseWriter, r *http.Request) {
   format := r.URL.Query().Get("format")
   if format == "" { format = "xlsx" }
 
-  rows, err := a.many(r.Context(), "SELECT kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan FROM mata_pelajaran ORDER BY kode")
+  rows, err := a.many(r.Context(), "SELECT id,kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan FROM mata_pelajaran ORDER BY kode")
   if err != nil { serverErr(w, err); return }
 
   if format == "xlsx" {
@@ -1281,7 +1284,7 @@ func (a *App) exportMapel(w http.ResponseWriter, r *http.Request) {
       Alignment: &excelize.Alignment{Horizontal: "center"},
     })
 
-    headers := []string{"Kode", "Nama", "Kelompok", "Fase", "JP Per Minggu", "Guru", "Keterangan"}
+    headers := []string{"ID", "Kode", "Nama", "Kelompok", "Fase", "JP Per Minggu", "Guru", "Keterangan"}
     for i, h := range headers {
       cell, _ := excelize.CoordinatesToCellName(i+1, 1)
       f.SetCellValue("Mata Pelajaran", cell, h)
@@ -1290,18 +1293,20 @@ func (a *App) exportMapel(w http.ResponseWriter, r *http.Request) {
 
     for i, row := range rows {
       rIdx := i + 2
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("A%d", rIdx), toStr(row["kode"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("C%d", rIdx), toStr(row["kelompok"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("D%d", rIdx), toStr(row["fase"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("E%d", rIdx), toStr(row["jp_per_minggu"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("F%d", rIdx), toStr(row["guru"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("G%d", rIdx), toStr(row["keterangan"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("B%d", rIdx), toStr(row["kode"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("D%d", rIdx), toStr(row["kelompok"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("E%d", rIdx), toStr(row["fase"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("F%d", rIdx), toStr(row["jp_per_minggu"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("G%d", rIdx), toStr(row["guru"]))
+      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("H%d", rIdx), toStr(row["keterangan"]))
     }
 
-    f.SetColWidth("Mata Pelajaran", "A", "A", 12)
-    f.SetColWidth("Mata Pelajaran", "B", "B", 30)
-    f.SetColWidth("Mata Pelajaran", "G", "G", 40)
+    f.SetColWidth("Mata Pelajaran", "A", "A", 36)
+    f.SetColWidth("Mata Pelajaran", "B", "B", 12)
+    f.SetColWidth("Mata Pelajaran", "C", "C", 30)
+    f.SetColWidth("Mata Pelajaran", "H", "H", 40)
 
     var buf bytes.Buffer
     if err := f.Write(&buf); err != nil { serverErr(w, err); return }
@@ -1316,6 +1321,7 @@ func (a *App) exportMapel(w http.ResponseWriter, r *http.Request) {
   data := make([]map[string]any, len(rows))
   for i, row := range rows {
     data[i] = map[string]any{
+      "id":           toStr(row["id"]),
       "kode":         toStr(row["kode"]),
       "nama":         toStr(row["nama"]),
       "kelompok":     toStr(row["kelompok"]),
@@ -1557,7 +1563,7 @@ func (a *App) importMapel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) exportKelas(w http.ResponseWriter, r *http.Request) {
-  rows, err := a.many(r.Context(), "SELECT nama, wali_kelas, keterangan FROM data_kelas ORDER BY nama")
+  rows, err := a.many(r.Context(), "SELECT id, nama, wali_kelas, keterangan FROM data_kelas ORDER BY nama")
   if err != nil { serverErr(w, err); return }
 
   f := excelize.NewFile()
@@ -1569,7 +1575,7 @@ func (a *App) exportKelas(w http.ResponseWriter, r *http.Request) {
     Alignment: &excelize.Alignment{Horizontal: "center"},
   })
 
-  headers := []string{"Nama Kelas", "Wali Kelas", "Keterangan"}
+  headers := []string{"ID", "Nama Kelas", "Wali Kelas", "Keterangan"}
   for i, h := range headers {
     cell, _ := excelize.CoordinatesToCellName(i+1, 1)
     f.SetCellValue("Data Kelas", cell, h)
@@ -1578,14 +1584,16 @@ func (a *App) exportKelas(w http.ResponseWriter, r *http.Request) {
 
   for i, row := range rows {
     rIdx := i + 2
-    f.SetCellValue("Data Kelas", fmt.Sprintf("A%d", rIdx), toStr(row["nama"]))
-    f.SetCellValue("Data Kelas", fmt.Sprintf("B%d", rIdx), toStr(row["wali_kelas"]))
-    f.SetCellValue("Data Kelas", fmt.Sprintf("C%d", rIdx), toStr(row["keterangan"]))
+    f.SetCellValue("Data Kelas", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+    f.SetCellValue("Data Kelas", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
+    f.SetCellValue("Data Kelas", fmt.Sprintf("C%d", rIdx), toStr(row["wali_kelas"]))
+    f.SetCellValue("Data Kelas", fmt.Sprintf("D%d", rIdx), toStr(row["keterangan"]))
   }
 
-  f.SetColWidth("Data Kelas", "A", "A", 15)
-  f.SetColWidth("Data Kelas", "B", "B", 30)
-  f.SetColWidth("Data Kelas", "C", "C", 40)
+  f.SetColWidth("Data Kelas", "A", "A", 36)
+  f.SetColWidth("Data Kelas", "B", "B", 15)
+  f.SetColWidth("Data Kelas", "C", "C", 30)
+  f.SetColWidth("Data Kelas", "D", "D", 40)
 
   var buf bytes.Buffer
   if err := f.Write(&buf); err != nil { serverErr(w, err); return }
@@ -1605,16 +1613,17 @@ func (a *App) downloadKelasTemplate(w http.ResponseWriter, r *http.Request) {
     Alignment: &excelize.Alignment{Horizontal: "center"},
   })
 
-  headers := []string{"Nama Kelas", "Wali Kelas", "Keterangan"}
+  headers := []string{"ID", "Nama Kelas", "Wali Kelas", "Keterangan"}
   for i, h := range headers {
     cell, _ := excelize.CoordinatesToCellName(i+1, 1)
     f.SetCellValue("Data Kelas", cell, h)
     f.SetCellStyle("Data Kelas", cell, cell, headerStyle)
   }
 
-  f.SetCellValue("Data Kelas", "A2", "7A")
-  f.SetCellValue("Data Kelas", "B2", "Budi Santoso")
-  f.SetCellValue("Data Kelas", "C2", "Keterangan kelas")
+  f.SetCellValue("Data Kelas", "A2", "")
+  f.SetCellValue("Data Kelas", "B2", "7A")
+  f.SetCellValue("Data Kelas", "C2", "Budi Santoso")
+  f.SetCellValue("Data Kelas", "D2", "Keterangan kelas")
 
   var buf bytes.Buffer
   if err := f.Write(&buf); err != nil { serverErr(w, err); return }
@@ -1684,7 +1693,7 @@ func (a *App) importKelas(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) exportEkstra(w http.ResponseWriter, r *http.Request) {
-  rows, err := a.many(r.Context(), "SELECT kode, nama, jenis, pembina, jadwal, tempat, keterangan FROM ekstrakurikuler ORDER BY kode")
+  rows, err := a.many(r.Context(), "SELECT id, kode, nama, jenis, pembina, jadwal, tempat, keterangan FROM ekstrakurikuler ORDER BY kode")
   if err != nil { serverErr(w, err); return }
 
   f := excelize.NewFile()
@@ -1696,7 +1705,7 @@ func (a *App) exportEkstra(w http.ResponseWriter, r *http.Request) {
     Alignment: &excelize.Alignment{Horizontal: "center"},
   })
 
-  headers := []string{"Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
+  headers := []string{"ID", "Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
   for i, h := range headers {
     cell, _ := excelize.CoordinatesToCellName(i+1, 1)
     f.SetCellValue("Ekstrakurikuler", cell, h)
@@ -1705,18 +1714,20 @@ func (a *App) exportEkstra(w http.ResponseWriter, r *http.Request) {
 
   for i, row := range rows {
     rIdx := i + 2
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("A%d", rIdx), toStr(row["kode"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("C%d", rIdx), toStr(row["jenis"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("D%d", rIdx), toStr(row["pembina"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("E%d", rIdx), toStr(row["jadwal"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("F%d", rIdx), toStr(row["tempat"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("G%d", rIdx), toStr(row["keterangan"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("B%d", rIdx), toStr(row["kode"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("D%d", rIdx), toStr(row["jenis"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("E%d", rIdx), toStr(row["pembina"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("F%d", rIdx), toStr(row["jadwal"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("G%d", rIdx), toStr(row["tempat"]))
+    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("H%d", rIdx), toStr(row["keterangan"]))
   }
 
-  f.SetColWidth("Ekstrakurikuler", "A", "A", 15)
-  f.SetColWidth("Ekstrakurikuler", "B", "B", 30)
-  f.SetColWidth("Ekstrakurikuler", "G", "G", 40)
+  f.SetColWidth("Ekstrakurikuler", "A", "A", 36)
+  f.SetColWidth("Ekstrakurikuler", "B", "B", 15)
+  f.SetColWidth("Ekstrakurikuler", "C", "C", 30)
+  f.SetColWidth("Ekstrakurikuler", "H", "H", 40)
 
   var buf bytes.Buffer
   if err := f.Write(&buf); err != nil { serverErr(w, err); return }
@@ -1736,16 +1747,17 @@ func (a *App) downloadEkstraTemplate(w http.ResponseWriter, r *http.Request) {
     Alignment: &excelize.Alignment{Horizontal: "center"},
   })
 
-  headers := []string{"Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
+  headers := []string{"ID", "Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
   for i, h := range headers {
     cell, _ := excelize.CoordinatesToCellName(i+1, 1)
     f.SetCellValue("Ekstrakurikuler", cell, h)
     f.SetCellStyle("Ekstrakurikuler", cell, cell, headerStyle)
   }
 
-  f.SetCellValue("Ekstrakurikuler", "A2", "PRAMUKA")
-  f.SetCellValue("Ekstrakurikuler", "B2", "Pramuka Wajib")
-  f.SetCellValue("Ekstrakurikuler", "C2", "Wajib")
+  f.SetCellValue("Ekstrakurikuler", "A2", "")
+  f.SetCellValue("Ekstrakurikuler", "B2", "PRAMUKA")
+  f.SetCellValue("Ekstrakurikuler", "C2", "Pramuka Wajib")
+  f.SetCellValue("Ekstrakurikuler", "D2", "Wajib")
 
   var buf bytes.Buffer
   if err := f.Write(&buf); err != nil { serverErr(w, err); return }
@@ -1829,7 +1841,7 @@ func (a *App) importEkstra(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) exportMutasi(w http.ResponseWriter, r *http.Request) {
-  rows, err := a.many(r.Context(), "SELECT s.nama, s.nisn, m.jenis, m.tanggal, m.asal_sekolah, m.tujuan_sekolah, m.alasan, m.nomor_surat, m.keterangan FROM mutasi m JOIN data_siswa s ON m.siswa_id = s.id ORDER BY m.created_at DESC")
+  rows, err := a.many(r.Context(), "SELECT m.id, s.nama, s.nisn, m.jenis, m.tanggal, m.asal_sekolah, m.tujuan_sekolah, m.alasan, m.nomor_surat, m.keterangan FROM mutasi m JOIN data_siswa s ON m.siswa_id = s.id ORDER BY m.created_at DESC")
   if err != nil { serverErr(w, err); return }
 
   f := excelize.NewFile()
@@ -1841,7 +1853,7 @@ func (a *App) exportMutasi(w http.ResponseWriter, r *http.Request) {
     Alignment: &excelize.Alignment{Horizontal: "center"},
   })
 
-  headers := []string{"Nama Siswa", "NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
+  headers := []string{"ID", "Nama Siswa", "NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
   for i, h := range headers {
     cell, _ := excelize.CoordinatesToCellName(i+1, 1)
     f.SetCellValue("Mutasi Siswa", cell, h)
@@ -1850,20 +1862,22 @@ func (a *App) exportMutasi(w http.ResponseWriter, r *http.Request) {
 
   for i, row := range rows {
     rIdx := i + 2
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("A%d", rIdx), toStr(row["nama"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("B%d", rIdx), toStr(row["nisn"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("C%d", rIdx), toStr(row["jenis"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("D%d", rIdx), toStr(row["tanggal"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("E%d", rIdx), toStr(row["asal_sekolah"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("F%d", rIdx), toStr(row["tujuan_sekolah"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("G%d", rIdx), toStr(row["alasan"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("H%d", rIdx), toStr(row["nomor_surat"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("I%d", rIdx), toStr(row["keterangan"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("C%d", rIdx), toStr(row["nisn"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("D%d", rIdx), toStr(row["jenis"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("E%d", rIdx), toStr(row["tanggal"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("F%d", rIdx), toStr(row["asal_sekolah"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("G%d", rIdx), toStr(row["tujuan_sekolah"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("H%d", rIdx), toStr(row["alasan"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("I%d", rIdx), toStr(row["nomor_surat"]))
+    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("J%d", rIdx), toStr(row["keterangan"]))
   }
 
-  f.SetColWidth("Mutasi Siswa", "A", "A", 25)
-  f.SetColWidth("Mutasi Siswa", "B", "B", 15)
-  f.SetColWidth("Mutasi Siswa", "G", "I", 30)
+  f.SetColWidth("Mutasi Siswa", "A", "A", 36)
+  f.SetColWidth("Mutasi Siswa", "B", "B", 25)
+  f.SetColWidth("Mutasi Siswa", "C", "C", 15)
+  f.SetColWidth("Mutasi Siswa", "H", "J", 30)
 
   var buf bytes.Buffer
   if err := f.Write(&buf); err != nil { serverErr(w, err); return }
@@ -1883,16 +1897,17 @@ func (a *App) downloadMutasiTemplate(w http.ResponseWriter, r *http.Request) {
     Alignment: &excelize.Alignment{Horizontal: "center"},
   })
 
-  headers := []string{"NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
+  headers := []string{"ID", "NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
   for i, h := range headers {
     cell, _ := excelize.CoordinatesToCellName(i+1, 1)
     f.SetCellValue("Mutasi", cell, h)
     f.SetCellStyle("Mutasi", cell, cell, headerStyle)
   }
 
-  f.SetCellValue("Mutasi", "A2", "1234567890")
-  f.SetCellValue("Mutasi", "B2", "Masuk")
-  f.SetCellValue("Mutasi", "C2", "2024-01-01")
+  f.SetCellValue("Mutasi", "A2", "")
+  f.SetCellValue("Mutasi", "B2", "1234567890")
+  f.SetCellValue("Mutasi", "C2", "Masuk")
+  f.SetCellValue("Mutasi", "D2", "2024-01-01")
 
   var buf bytes.Buffer
   if err := f.Write(&buf); err != nil { serverErr(w, err); return }

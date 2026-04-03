@@ -194,7 +194,7 @@ export default function DataSiswa() {
 
   const handleExport = () => {
     const headers = [
-      'No', 'Kelas', 'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
+      'ID', 'No', 'Kelas', 'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
       'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua',
       'Telepon Orang Tua', 'Tanggal Masuk', 'Status'
     ];
@@ -203,6 +203,7 @@ export default function DataSiswa() {
 
     filteredSiswa.forEach((siswa, index) => {
       worksheetData.push([
+        siswa.id || '',
         index + 1,
         siswa.kelas || '',
         siswa.nis || '',
