@@ -177,14 +177,18 @@ func runMigration(ctx context.Context, db *pgxpool.Pool) error {
 			nis varchar(20),
 			nisn varchar(20) NOT NULL UNIQUE,
 			nama varchar(255) NOT NULL,
+			nama_lengkap varchar(255),
 			tempat_lahir varchar(100),
 			tanggal_lahir text,
 			jenis_kelamin text NOT NULL DEFAULT 'L',
 			agama varchar(50),
 			alamat text,
 			nama_ortu varchar(255) NOT NULL,
+			nama_orang_tua varchar(255),
 			telepon_ortu varchar(20),
+			telepon_orang_tua varchar(20),
 			tanggal_masuk text,
+			kelas_id uuid,
 			kelas varchar(10),
 			status text DEFAULT 'Aktif',
 			created_at timestamptz NOT NULL DEFAULT NOW(),
@@ -193,10 +197,13 @@ func runMigration(ctx context.Context, db *pgxpool.Pool) error {
 		`CREATE TABLE IF NOT EXISTS mata_pelajaran (
 			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 			kode varchar(20),
+			kode_mapel varchar(20),
 			nama varchar(255) NOT NULL,
+			nama_mapel varchar(255),
 			kelompok text NOT NULL DEFAULT 'A',
 			fase text,
 			jp_per_minggu text,
+			guru_id uuid,
 			guru varchar(255),
 			keterangan text,
 			created_at timestamptz NOT NULL DEFAULT NOW(),
@@ -205,6 +212,7 @@ func runMigration(ctx context.Context, db *pgxpool.Pool) error {
 		`CREATE TABLE IF NOT EXISTS data_kelas (
 			id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 			nama varchar(50) NOT NULL UNIQUE,
+			nama_kelas varchar(50),
 			wali_kelas_id uuid,
 			wali_kelas varchar(255),
 			keterangan text,
@@ -342,6 +350,31 @@ func runMigration(ctx context.Context, db *pgxpool.Pool) error {
 	for i, stmt := range stmts {
 		if _, err := db.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("statement %d failed: %w", i+1, err)
+		}
+	}
+
+	compatStmts := []string{
+		`ALTER TABLE data_kelas ADD COLUMN IF NOT EXISTS nama_kelas varchar(50)`,
+		`ALTER TABLE data_kelas ADD COLUMN IF NOT EXISTS wali_kelas_id uuid`,
+		`UPDATE data_kelas SET nama_kelas = COALESCE(NULLIF(nama_kelas, ''), nama)`,
+		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'data_kelas_wali_kelas_id_fkey') THEN ALTER TABLE data_kelas ADD CONSTRAINT data_kelas_wali_kelas_id_fkey FOREIGN KEY (wali_kelas_id) REFERENCES users(id) ON DELETE SET NULL; END IF; END $$`,
+		`ALTER TABLE data_siswa ADD COLUMN IF NOT EXISTS nama_lengkap varchar(255)`,
+		`ALTER TABLE data_siswa ADD COLUMN IF NOT EXISTS nama_orang_tua varchar(255)`,
+		`ALTER TABLE data_siswa ADD COLUMN IF NOT EXISTS telepon_orang_tua varchar(20)`,
+		`ALTER TABLE data_siswa ADD COLUMN IF NOT EXISTS kelas_id uuid`,
+		`UPDATE data_siswa SET nama_lengkap = COALESCE(NULLIF(nama_lengkap, ''), nama), nama_orang_tua = COALESCE(NULLIF(nama_orang_tua, ''), nama_ortu), telepon_orang_tua = COALESCE(NULLIF(telepon_orang_tua, ''), telepon_ortu)`,
+		`UPDATE data_siswa s SET kelas_id = k.id FROM data_kelas k WHERE s.kelas_id IS NULL AND COALESCE(NULLIF(s.kelas, ''), '') <> '' AND (k.nama = s.kelas OR k.nama_kelas = s.kelas)`,
+		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'data_siswa_kelas_id_fkey') THEN ALTER TABLE data_siswa ADD CONSTRAINT data_siswa_kelas_id_fkey FOREIGN KEY (kelas_id) REFERENCES data_kelas(id) ON DELETE SET NULL; END IF; END $$`,
+		`ALTER TABLE mata_pelajaran ADD COLUMN IF NOT EXISTS kode_mapel varchar(20)`,
+		`ALTER TABLE mata_pelajaran ADD COLUMN IF NOT EXISTS nama_mapel varchar(255)`,
+		`ALTER TABLE mata_pelajaran ADD COLUMN IF NOT EXISTS guru_id uuid`,
+		`UPDATE mata_pelajaran SET kode_mapel = COALESCE(NULLIF(kode_mapel, ''), kode), nama_mapel = COALESCE(NULLIF(nama_mapel, ''), nama)`,
+		`UPDATE mata_pelajaran m SET guru_id = u.id FROM users u WHERE m.guru_id IS NULL AND COALESCE(NULLIF(m.guru, ''), '') <> '' AND (u.nama = m.guru OR u.email = m.guru OR u.nip = m.guru)`,
+		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'mata_pelajaran_guru_id_fkey') THEN ALTER TABLE mata_pelajaran ADD CONSTRAINT mata_pelajaran_guru_id_fkey FOREIGN KEY (guru_id) REFERENCES users(id) ON DELETE SET NULL; END IF; END $$`,
+	}
+	for i, stmt := range compatStmts {
+		if _, err := db.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("compat statement %d failed: %w", i+1, err)
 		}
 	}
 

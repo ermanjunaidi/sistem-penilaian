@@ -1,0 +1,23 @@
++----------------+       +----------------+       +----------------+
+|     users      |       |     kelas      |       |     siswa      |
++----------------+       +----------------+       +----------------+
+| id (PK)        |<----->| id (PK)        |       | id (PK)        |
+| nama           |       | nama_kelas     |       | kelas_id (FK) >|---+
+| email          |       | wali_kelas_id  |>---┐  | nis            |   |
+| nip            |       +----------------+    |  | nisn           |   |
+| password       |                              |  | nama_lengkap   |   |
+| role           |                              |  | tempat_lahir   |   |
+| telepon        |      +----------------+      |  | tanggal_lahir  |   |
+| alamat         |      | mata_pelajaran |      |  | jenis_kelamin  |   |
++----------------+      +----------------+      |  | agama          |   |
+        |               | id (PK)        |      |  | status         |   |
+        |               | kode_mapel     |      |  | alamat         |   |
+        +-------------->| nama_mapel     |      |  | nama_orang_tua |   |
+        | (guru_id) FK  | kelompok       |      |  | telepon_orang_tua| |
+        |               | jp_per_minggu  |      |  | tanggal_masuk  |   |
+        |               | guru_id (FK)   |>---┘  +----------------+
+        |               +----------------+
+        |
+        +-------------------┐
+                            |
+                    (wali_kelas_id FK)

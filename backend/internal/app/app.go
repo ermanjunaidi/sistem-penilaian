@@ -1,28 +1,28 @@
 package app
 
 import (
-  "bytes"
-  "context"
-  "encoding/csv"
-  "encoding/json"
-  "errors"
-  "fmt"
-  "io"
-  "log"
-  "math"
-  "net/http"
-  "os"
-  "slices"
-  "strconv"
-  "strings"
-  "time"
+	"bytes"
+	"context"
+	"encoding/csv"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"math"
+	"net/http"
+	"os"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
 
-  "github.com/go-chi/chi/v5"
-  "github.com/go-chi/chi/v5/middleware"
-  "github.com/golang-jwt/jwt/v5"
-  "github.com/jackc/pgx/v5/pgxpool"
-  "github.com/xuri/excelize/v2"
-  "golang.org/x/crypto/bcrypt"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/xuri/excelize/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type ctxKey string
@@ -30,604 +30,748 @@ type ctxKey string
 const userCtxKey ctxKey = "auth_user"
 
 type AuthUser struct {
-  ID string `json:"id"`
-  Role string `json:"role"`
-  Email string `json:"email"`
-  Nama string `json:"nama"`
+	ID    string `json:"id"`
+	Role  string `json:"role"`
+	Email string `json:"email"`
+	Nama  string `json:"nama"`
 }
 
 type App struct {
-  db *pgxpool.Pool
-  secret []byte
-  port string
-  frontendURL string
+	db          *pgxpool.Pool
+	secret      []byte
+	port        string
+	frontendURL string
 }
 
 func New() (*App, error) {
-  dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
-  if dsn == "" {
-    return nil, errors.New("DATABASE_URL is required")
-  }
-  sec := strings.TrimSpace(os.Getenv("JWT_SECRET"))
-  if sec == "" {
-    return nil, errors.New("JWT_SECRET is required")
-  }
-  cfg, err := pgxpool.ParseConfig(dsn)
-  if err != nil {
-    return nil, err
-  }
-  db, err := pgxpool.NewWithConfig(context.Background(), cfg)
-  if err != nil {
-    return nil, err
-  }
-  if err := db.Ping(context.Background()); err != nil {
-    return nil, err
-  }
-  port := strings.TrimSpace(os.Getenv("PORT"))
-  if port == "" {
-    port = "5000"
-  }
-  frontendURL := strings.TrimSpace(os.Getenv("FRONTEND_URL"))
-  if frontendURL == "" {
-    frontendURL = "http://localhost:5173"
-  }
-  return &App{db: db, secret: []byte(sec), port: port, frontendURL: frontendURL}, nil
+	dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	if dsn == "" {
+		return nil, errors.New("DATABASE_URL is required")
+	}
+	sec := strings.TrimSpace(os.Getenv("JWT_SECRET"))
+	if sec == "" {
+		return nil, errors.New("JWT_SECRET is required")
+	}
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, err
+	}
+	db, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(context.Background()); err != nil {
+		return nil, err
+	}
+	if err := ensureDiagramSchema(context.Background(), db); err != nil {
+		return nil, err
+	}
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "5000"
+	}
+	frontendURL := strings.TrimSpace(os.Getenv("FRONTEND_URL"))
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	return &App{db: db, secret: []byte(sec), port: port, frontendURL: frontendURL}, nil
+}
+
+func ensureDiagramSchema(ctx context.Context, db *pgxpool.Pool) error {
+	stmts := []string{
+		`ALTER TABLE data_kelas ADD COLUMN IF NOT EXISTS nama_kelas varchar(50)`,
+		`ALTER TABLE data_kelas ADD COLUMN IF NOT EXISTS wali_kelas_id uuid`,
+		`UPDATE data_kelas SET nama_kelas = COALESCE(NULLIF(nama_kelas, ''), nama)`,
+		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'data_kelas_wali_kelas_id_fkey') THEN ALTER TABLE data_kelas ADD CONSTRAINT data_kelas_wali_kelas_id_fkey FOREIGN KEY (wali_kelas_id) REFERENCES users(id) ON DELETE SET NULL; END IF; END $$`,
+		`ALTER TABLE data_siswa ADD COLUMN IF NOT EXISTS nama_lengkap varchar(255)`,
+		`ALTER TABLE data_siswa ADD COLUMN IF NOT EXISTS nama_orang_tua varchar(255)`,
+		`ALTER TABLE data_siswa ADD COLUMN IF NOT EXISTS telepon_orang_tua varchar(20)`,
+		`ALTER TABLE data_siswa ADD COLUMN IF NOT EXISTS kelas_id uuid`,
+		`UPDATE data_siswa SET nama_lengkap = COALESCE(NULLIF(nama_lengkap, ''), nama), nama_orang_tua = COALESCE(NULLIF(nama_orang_tua, ''), nama_ortu), telepon_orang_tua = COALESCE(NULLIF(telepon_orang_tua, ''), telepon_ortu)`,
+		`UPDATE data_siswa s SET kelas_id = k.id FROM data_kelas k WHERE s.kelas_id IS NULL AND COALESCE(NULLIF(s.kelas, ''), '') <> '' AND (k.nama = s.kelas OR k.nama_kelas = s.kelas)`,
+		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'data_siswa_kelas_id_fkey') THEN ALTER TABLE data_siswa ADD CONSTRAINT data_siswa_kelas_id_fkey FOREIGN KEY (kelas_id) REFERENCES data_kelas(id) ON DELETE SET NULL; END IF; END $$`,
+		`ALTER TABLE mata_pelajaran ADD COLUMN IF NOT EXISTS kode_mapel varchar(20)`,
+		`ALTER TABLE mata_pelajaran ADD COLUMN IF NOT EXISTS nama_mapel varchar(255)`,
+		`ALTER TABLE mata_pelajaran ADD COLUMN IF NOT EXISTS guru_id uuid`,
+		`UPDATE mata_pelajaran SET kode_mapel = COALESCE(NULLIF(kode_mapel, ''), kode), nama_mapel = COALESCE(NULLIF(nama_mapel, ''), nama)`,
+		`UPDATE mata_pelajaran m SET guru_id = u.id FROM users u WHERE m.guru_id IS NULL AND COALESCE(NULLIF(m.guru, ''), '') <> '' AND (u.nama = m.guru OR u.email = m.guru OR u.nip = m.guru)`,
+		`DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'mata_pelajaran_guru_id_fkey') THEN ALTER TABLE mata_pelajaran ADD CONSTRAINT mata_pelajaran_guru_id_fkey FOREIGN KEY (guru_id) REFERENCES users(id) ON DELETE SET NULL; END IF; END $$`,
+	}
+	for _, stmt := range stmts {
+		if _, err := db.Exec(ctx, stmt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *App) Run() error {
-  r := chi.NewRouter()
-  r.Use(middleware.RequestID)
-  r.Use(middleware.RealIP)
-  r.Use(middleware.Recoverer)
-  r.Use(a.cors)
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Recoverer)
+	r.Use(a.cors)
 
-  r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-    respond(w, 200, map[string]any{"success": true, "message": "Server is running", "timestamp": time.Now().Format(time.RFC3339)})
-  })
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		respond(w, 200, map[string]any{"success": true, "message": "Server is running", "timestamp": time.Now().Format(time.RFC3339)})
+	})
 
-  r.Route("/api", func(api chi.Router) {
-    api.Route("/auth", func(ar chi.Router) {
-      ar.Post("/login", a.login)
-      ar.With(a.auth).Post("/register", a.register)
-      ar.With(a.auth).Get("/me", a.me)
-      ar.With(a.auth).Put("/me", a.updateMe)
-      ar.With(a.auth).Put("/change-password", a.changePassword)
-    })
+	r.Route("/api", func(api chi.Router) {
+		api.Route("/auth", func(ar chi.Router) {
+			ar.Post("/login", a.login)
+			ar.With(a.auth).Post("/register", a.register)
+			ar.With(a.auth).Get("/me", a.me)
+			ar.With(a.auth).Put("/me", a.updateMe)
+			ar.With(a.auth).Put("/change-password", a.changePassword)
+		})
 
-    api.Group(func(p chi.Router) {
-      p.Use(a.auth)
-      p.Mount("/users", a.usersRoutes())
-      p.Mount("/sekolah", a.sekolahRoutes())
-      p.Mount("/siswa", a.siswaRoutes())
-      p.Mount("/mapel", a.mapelRoutes())
-      p.Mount("/ekstra", a.ekstraRoutes())
-      p.Mount("/penilaian", a.penilaianRoutes())
-    })
-  })
+		api.Group(func(p chi.Router) {
+			p.Use(a.auth)
+			p.Mount("/users", a.usersRoutes())
+			p.Mount("/sekolah", a.sekolahRoutes())
+			p.Mount("/siswa", a.siswaRoutes())
+			p.Mount("/mapel", a.mapelRoutes())
+			p.Mount("/ekstra", a.ekstraRoutes())
+			p.Mount("/penilaian", a.penilaianRoutes())
+		})
+	})
 
-  r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-    respond(w, 404, map[string]any{"success": false, "message": "Route not found"})
-  })
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		respond(w, 404, map[string]any{"success": false, "message": "Route not found"})
+	})
 
-  log.Printf("Go backend running on http://localhost:%s", a.port)
-  return http.ListenAndServe(":"+a.port, r)
+	log.Printf("Go backend running on http://localhost:%s", a.port)
+	return http.ListenAndServe(":"+a.port, r)
 }
 
 func (a *App) cors(next http.Handler) http.Handler {
-  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Access-Control-Allow-Origin", a.frontendURL)
-    w.Header().Set("Access-Control-Allow-Credentials", "true")
-    w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
-    w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    if r.Method == http.MethodOptions {
-      w.WriteHeader(204)
-      return
-    }
-    next.ServeHTTP(w, r)
-  })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", a.frontendURL)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,PATCH,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(204)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (a *App) auth(next http.Handler) http.Handler {
-  return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    h := strings.TrimSpace(r.Header.Get("Authorization"))
-    if !strings.HasPrefix(h, "Bearer ") {
-      respond(w, 401, map[string]any{"success": false, "message": "Token tidak ditemukan. Silakan login terlebih dahulu."})
-      return
-    }
-    tokenStr := strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
-    claims := jwt.MapClaims{}
-    token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
-      return a.secret, nil
-    })
-    if err != nil || !token.Valid {
-      respond(w, 403, map[string]any{"success": false, "message": "Token tidak valid."})
-      return
-    }
-    uid := toStr(claims["userId"])
-    row, err := a.one(r.Context(), "SELECT id,email,nama,role,status FROM users WHERE id=$1", uid)
-    if err != nil || row == nil {
-      respond(w, 401, map[string]any{"success": false, "message": "User tidak ditemukan."})
-      return
-    }
-    if toStr(row["status"]) != "aktif" {
-      respond(w, 403, map[string]any{"success": false, "message": "Akun Anda telah dinonaktifkan. Hubungi administrator."})
-      return
-    }
-    u := AuthUser{ID: toStr(row["id"]), Role: toStr(row["role"]), Email: toStr(row["email"]), Nama: toStr(row["nama"])}
-    next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, u)))
-  })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := strings.TrimSpace(r.Header.Get("Authorization"))
+		if !strings.HasPrefix(h, "Bearer ") {
+			respond(w, 401, map[string]any{"success": false, "message": "Token tidak ditemukan. Silakan login terlebih dahulu."})
+			return
+		}
+		tokenStr := strings.TrimSpace(strings.TrimPrefix(h, "Bearer "))
+		claims := jwt.MapClaims{}
+		token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (any, error) {
+			return a.secret, nil
+		})
+		if err != nil || !token.Valid {
+			respond(w, 403, map[string]any{"success": false, "message": "Token tidak valid."})
+			return
+		}
+		uid := toStr(claims["userId"])
+		row, err := a.one(r.Context(), "SELECT id,email,nama,role,status FROM users WHERE id=$1", uid)
+		if err != nil || row == nil {
+			respond(w, 401, map[string]any{"success": false, "message": "User tidak ditemukan."})
+			return
+		}
+		if toStr(row["status"]) != "aktif" {
+			respond(w, 403, map[string]any{"success": false, "message": "Akun Anda telah dinonaktifkan. Hubungi administrator."})
+			return
+		}
+		u := AuthUser{ID: toStr(row["id"]), Role: toStr(row["role"]), Email: toStr(row["email"]), Nama: toStr(row["nama"])}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, u)))
+	})
 }
 
 func currentUser(r *http.Request) *AuthUser {
-  v, ok := r.Context().Value(userCtxKey).(AuthUser)
-  if !ok { return nil }
-  return &v
+	v, ok := r.Context().Value(userCtxKey).(AuthUser)
+	if !ok {
+		return nil
+	}
+	return &v
 }
 
 func (a *App) authorizeHierarchy(min string) func(http.Handler) http.Handler {
-  lv := map[string]int{"guru": 1, "wali_kelas": 2, "admin": 3, "superadmin": 4}
-  req := lv[min]
-  return func(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-      u := currentUser(r)
-      if u == nil || lv[u.Role] < req {
-        respond(w, 403, map[string]any{"success": false, "message": "Anda tidak memiliki izin yang cukup.", "yourRole": roleOrAnon(u), "requiredRole": min})
-        return
-      }
-      next.ServeHTTP(w, r)
-    })
-  }
+	lv := map[string]int{"guru": 1, "wali_kelas": 2, "admin": 3, "superadmin": 4}
+	req := lv[min]
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u := currentUser(r)
+			if u == nil || lv[u.Role] < req {
+				respond(w, 403, map[string]any{"success": false, "message": "Anda tidak memiliki izin yang cukup.", "yourRole": roleOrAnon(u), "requiredRole": min})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (a *App) authorize(roles ...string) func(http.Handler) http.Handler {
-  allow := map[string]bool{}
-  for _, r := range roles { allow[r] = true }
-  return func(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-      u := currentUser(r)
-      if u == nil || !allow[u.Role] {
-        respond(w, 403, map[string]any{"success": false, "message": "Anda tidak memiliki akses ke resource ini.", "required": roles, "yourRole": roleOrAnon(u)})
-        return
-      }
-      next.ServeHTTP(w, r)
-    })
-  }
+	allow := map[string]bool{}
+	for _, r := range roles {
+		allow[r] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u := currentUser(r)
+			if u == nil || !allow[u.Role] {
+				respond(w, 403, map[string]any{"success": false, "message": "Anda tidak memiliki akses ke resource ini.", "required": roles, "yourRole": roleOrAnon(u)})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func roleOrAnon(u *AuthUser) string {
-  if u == nil { return "unauthenticated" }
-  return u.Role
+	if u == nil {
+		return "unauthenticated"
+	}
+	return u.Role
 }
 
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  email := strings.TrimSpace(toStr(body["email"]))
-  pass := toStr(body["password"])
-  if email == "" || pass == "" {
-    respond(w, 400, map[string]any{"success": false, "message": "Email dan password wajib diisi."})
-    return
-  }
-  user, err := a.one(r.Context(), "SELECT id,email,password,nama,nip,role,foto,telepon,status FROM users WHERE email=$1 OR nip=$1 LIMIT 1", email)
-  if err != nil || user == nil { respond(w, 401, map[string]any{"success": false, "message": "Email atau password salah."}); return }
-  if bcrypt.CompareHashAndPassword([]byte(toStr(user["password"])), []byte(pass)) != nil {
-    respond(w, 401, map[string]any{"success": false, "message": "Email atau password salah."}); return
-  }
-  if toStr(user["status"]) != "aktif" {
-    respond(w, 403, map[string]any{"success": false, "message": "Akun Anda telah dinonaktifkan. Hubungi administrator."}); return
-  }
-  _, _ = a.db.Exec(r.Context(), "UPDATE users SET terakhir_login=NOW() WHERE id=$1", user["id"])
-  token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"userId": user["id"], "email": user["email"], "role": user["role"], "exp": time.Now().Add(24*time.Hour).Unix()})
-  tokenStr, _ := token.SignedString(a.secret)
-  respond(w, 200, map[string]any{"success": true, "message": "Login berhasil.", "data": map[string]any{"token": tokenStr, "user": map[string]any{"id": user["id"], "email": user["email"], "nama": user["nama"], "nip": user["nip"], "role": user["role"], "foto": user["foto"], "telepon": user["telepon"]}}})
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	email := strings.TrimSpace(toStr(body["email"]))
+	pass := toStr(body["password"])
+	if email == "" || pass == "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Email dan password wajib diisi."})
+		return
+	}
+	user, err := a.one(r.Context(), "SELECT id,email,password,nama,nip,role,foto,telepon,status FROM users WHERE email=$1 OR nip=$1 LIMIT 1", email)
+	if err != nil || user == nil {
+		respond(w, 401, map[string]any{"success": false, "message": "Email atau password salah."})
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(toStr(user["password"])), []byte(pass)) != nil {
+		respond(w, 401, map[string]any{"success": false, "message": "Email atau password salah."})
+		return
+	}
+	if toStr(user["status"]) != "aktif" {
+		respond(w, 403, map[string]any{"success": false, "message": "Akun Anda telah dinonaktifkan. Hubungi administrator."})
+		return
+	}
+	_, _ = a.db.Exec(r.Context(), "UPDATE users SET terakhir_login=NOW() WHERE id=$1", user["id"])
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{"userId": user["id"], "email": user["email"], "role": user["role"], "exp": time.Now().Add(24 * time.Hour).Unix()})
+	tokenStr, _ := token.SignedString(a.secret)
+	respond(w, 200, map[string]any{"success": true, "message": "Login berhasil.", "data": map[string]any{"token": tokenStr, "user": map[string]any{"id": user["id"], "email": user["email"], "nama": user["nama"], "nip": user["nip"], "role": user["role"], "foto": user["foto"], "telepon": user["telepon"]}}})
 }
 
 func (a *App) register(w http.ResponseWriter, r *http.Request) {
-  u := currentUser(r)
-  if u == nil || (u.Role != "superadmin" && u.Role != "admin") { respond(w, 403, map[string]any{"success": false, "message": "Hanya admin yang dapat mendaftarkan user baru."}); return }
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  email := strings.TrimSpace(toStr(body["email"]))
-  password := toStr(body["password"])
-  nama := strings.TrimSpace(toStr(body["nama"]))
-  nip := nullIfEmpty(body["nip"])
-  role := toStr(body["role"])
-  if role == "" { role = "guru" }
-  if role == "superadmin" && u.Role != "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mendaftarkan superadmin baru."}); return }
-  if email == "" || password == "" || nama == "" { respond(w, 400, map[string]any{"success": false, "message": "Email, password, dan nama wajib diisi."}); return }
-  if !(role == "admin" || role == "wali_kelas" || role == "guru") { respond(w, 400, map[string]any{"success": false, "message": "Role tidak valid. Role yang bisa dibuat: admin, wali_kelas, guru."}); return }
-  exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE email=$1 OR ($2::text IS NOT NULL AND nip=$2) LIMIT 1", email, nip)
-  if exists != nil { respond(w, 400, map[string]any{"success": false, "message": "Email atau NIP sudah terdaftar."}); return }
-  hash, _ := bcrypt.GenerateFromPassword([]byte(password), 10)
-  row, err := a.one(r.Context(), "INSERT INTO users (email,password,nama,nip,role,telepon,alamat) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,email,nama,nip,role", email, string(hash), nama, nip, role, nullIfEmpty(body["telepon"]), nullIfEmpty(body["alamat"]))
-  if err != nil { serverErr(w, err); return }
-  respond(w, 201, map[string]any{"success": true, "message": "User berhasil didaftarkan.", "data": row})
+	u := currentUser(r)
+	if u == nil || (u.Role != "superadmin" && u.Role != "admin") {
+		respond(w, 403, map[string]any{"success": false, "message": "Hanya admin yang dapat mendaftarkan user baru."})
+		return
+	}
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	email := strings.TrimSpace(toStr(body["email"]))
+	password := toStr(body["password"])
+	nama := strings.TrimSpace(toStr(body["nama"]))
+	nip := nullIfEmpty(body["nip"])
+	role := toStr(body["role"])
+	if role == "" {
+		role = "guru"
+	}
+	if role == "superadmin" && u.Role != "superadmin" {
+		respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mendaftarkan superadmin baru."})
+		return
+	}
+	if email == "" || password == "" || nama == "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Email, password, dan nama wajib diisi."})
+		return
+	}
+	if !(role == "admin" || role == "wali_kelas" || role == "guru") {
+		respond(w, 400, map[string]any{"success": false, "message": "Role tidak valid. Role yang bisa dibuat: admin, wali_kelas, guru."})
+		return
+	}
+	exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE email=$1 OR ($2::text IS NOT NULL AND nip=$2) LIMIT 1", email, nip)
+	if exists != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Email atau NIP sudah terdaftar."})
+		return
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(password), 10)
+	row, err := a.one(r.Context(), "INSERT INTO users (email,password,nama,nip,role,telepon,alamat) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,email,nama,nip,role", email, string(hash), nama, nip, role, nullIfEmpty(body["telepon"]), nullIfEmpty(body["alamat"]))
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 201, map[string]any{"success": true, "message": "User berhasil didaftarkan.", "data": row})
 }
 
 func (a *App) me(w http.ResponseWriter, r *http.Request) {
-  u := currentUser(r)
-  row, err := a.one(r.Context(), "SELECT id,email,nama,nip,role,status,foto,telepon,alamat,tanggal_lahir AS \"tanggalLahir\",tempat_lahir AS \"tempatLahir\",tanggal_bergabung AS \"tanggalBergabung\",terakhir_login AS \"terakhirLogin\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM users WHERE id=$1", u.ID)
-  if err != nil { serverErr(w, err); return }
-  if row == nil { respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."}); return }
-  respond(w, 200, map[string]any{"success": true, "data": row})
+	u := currentUser(r)
+	row, err := a.one(r.Context(), "SELECT id,email,nama,nip,role,status,foto,telepon,alamat,tanggal_lahir AS \"tanggalLahir\",tempat_lahir AS \"tempatLahir\",tanggal_bergabung AS \"tanggalBergabung\",terakhir_login AS \"terakhirLogin\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM users WHERE id=$1", u.ID)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	if row == nil {
+		respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."})
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "data": row})
 }
 func (a *App) updateMe(w http.ResponseWriter, r *http.Request) {
-  u := currentUser(r)
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  _, err = a.db.Exec(r.Context(), "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), email=COALESCE(NULLIF($2,''),email), telepon=COALESCE(NULLIF($3,''),telepon), alamat=COALESCE(NULLIF($4,''),alamat), foto=COALESCE(NULLIF($5,''),foto), updated_at=NOW() WHERE id=$6", toStr(body["nama"]), toStr(body["email"]), toStr(body["telepon"]), toStr(body["alamat"]), toStr(body["foto"]), u.ID)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "message": "Profil berhasil diperbarui."})
+	u := currentUser(r)
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	_, err = a.db.Exec(r.Context(), "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), email=COALESCE(NULLIF($2,''),email), telepon=COALESCE(NULLIF($3,''),telepon), alamat=COALESCE(NULLIF($4,''),alamat), foto=COALESCE(NULLIF($5,''),foto), updated_at=NOW() WHERE id=$6", toStr(body["nama"]), toStr(body["email"]), toStr(body["telepon"]), toStr(body["alamat"]), toStr(body["foto"]), u.ID)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": "Profil berhasil diperbarui."})
 }
 
 func (a *App) changePassword(w http.ResponseWriter, r *http.Request) {
-  u := currentUser(r)
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  currentPass := toStr(body["currentPassword"])
-  newPass := toStr(body["newPassword"])
-  if currentPass == "" || newPass == "" { respond(w, 400, map[string]any{"success": false, "message": "Password saat ini dan password baru wajib diisi."}); return }
-  row, err := a.one(r.Context(), "SELECT password FROM users WHERE id=$1", u.ID)
-  if err != nil || row == nil { serverErr(w, err); return }
-  if bcrypt.CompareHashAndPassword([]byte(toStr(row["password"])), []byte(currentPass)) != nil { respond(w, 400, map[string]any{"success": false, "message": "Password saat ini salah."}); return }
-  hash, _ := bcrypt.GenerateFromPassword([]byte(newPass), 10)
-  _, err = a.db.Exec(r.Context(), "UPDATE users SET password=$1, updated_at=NOW() WHERE id=$2", string(hash), u.ID)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "message": "Password berhasil diubah."})
+	u := currentUser(r)
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	currentPass := toStr(body["currentPassword"])
+	newPass := toStr(body["newPassword"])
+	if currentPass == "" || newPass == "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Password saat ini dan password baru wajib diisi."})
+		return
+	}
+	row, err := a.one(r.Context(), "SELECT password FROM users WHERE id=$1", u.ID)
+	if err != nil || row == nil {
+		serverErr(w, err)
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(toStr(row["password"])), []byte(currentPass)) != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Password saat ini salah."})
+		return
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(newPass), 10)
+	_, err = a.db.Exec(r.Context(), "UPDATE users SET password=$1, updated_at=NOW() WHERE id=$2", string(hash), u.ID)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": "Password berhasil diubah."})
 }
 
 func (a *App) usersRoutes() chi.Router {
-  r := chi.NewRouter()
-  r.With(a.authorizeHierarchy("admin")).Get("/", a.listUsers)
-  r.With(a.authorizeHierarchy("admin")).Get("/action/export", a.exportUsers)
-  r.With(a.authorizeHierarchy("admin")).Post("/action/import", a.importUsers)
-  r.With(a.authorizeHierarchy("admin")).Get("/action/template", a.downloadUserTemplate)
-  r.With(a.authorizeHierarchy("admin")).Get("/{id}", a.getUser)
-  r.With(a.authorizeHierarchy("admin")).Post("/", a.createUser)
-  r.With(a.authorizeHierarchy("admin")).Put("/{id}", a.updateUser)
-  r.With(a.authorizeHierarchy("admin")).Delete("/{id}", a.deleteUser)
-  r.With(a.authorizeHierarchy("admin")).Put("/{id}/reset-password", a.resetPassword)
-  return r
+	r := chi.NewRouter()
+	r.With(a.authorizeHierarchy("admin")).Get("/", a.listUsers)
+	r.With(a.authorizeHierarchy("admin")).Get("/action/export", a.exportUsers)
+	r.With(a.authorizeHierarchy("admin")).Post("/action/import", a.importUsers)
+	r.With(a.authorizeHierarchy("admin")).Get("/action/template", a.downloadUserTemplate)
+	r.With(a.authorizeHierarchy("admin")).Get("/{id}", a.getUser)
+	r.With(a.authorizeHierarchy("admin")).Post("/", a.createUser)
+	r.With(a.authorizeHierarchy("admin")).Put("/{id}", a.updateUser)
+	r.With(a.authorizeHierarchy("admin")).Delete("/{id}", a.deleteUser)
+	r.With(a.authorizeHierarchy("admin")).Put("/{id}/reset-password", a.resetPassword)
+	return r
 }
 
 func (a *App) exportUsers(w http.ResponseWriter, r *http.Request) {
-  format := r.URL.Query().Get("format")
-  if format == "" { format = "xlsx" }
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "xlsx"
+	}
 
-  rows, err := a.many(r.Context(), "SELECT id,email,nama,nip,role,status,telepon,alamat FROM users ORDER BY created_at DESC")
-  if err != nil { serverErr(w, err); return }
+	rows, err := a.many(r.Context(), "SELECT id,email,nama,nip,role,status,telepon,alamat FROM users ORDER BY created_at DESC")
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  if format == "xlsx" {
-    f := excelize.NewFile()
-    f.SetSheetName("Sheet1", "Users")
+	if format == "xlsx" {
+		f := excelize.NewFile()
+		f.SetSheetName("Sheet1", "Users")
 
-    headerStyle, _ := f.NewStyle(&excelize.Style{
-      Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-      Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-      Alignment: &excelize.Alignment{Horizontal: "center"},
-    })
+		headerStyle, _ := f.NewStyle(&excelize.Style{
+			Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+			Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+			Alignment: &excelize.Alignment{Horizontal: "center"},
+		})
 
-    headers := []string{"ID", "Email", "Nama", "NIP", "Role", "Status", "Telepon", "Alamat"}
-    for i, h := range headers {
-      cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-      f.SetCellValue("Users", cell, h)
-      f.SetCellStyle("Users", cell, cell, headerStyle)
-    }
+		headers := []string{"ID", "Email", "Nama", "NIP", "Role", "Status", "Telepon", "Alamat"}
+		for i, h := range headers {
+			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+			f.SetCellValue("Users", cell, h)
+			f.SetCellStyle("Users", cell, cell, headerStyle)
+		}
 
-    for i, row := range rows {
-      rIdx := i + 2
-      f.SetCellValue("Users", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
-      f.SetCellValue("Users", fmt.Sprintf("B%d", rIdx), toStr(row["email"]))
-      f.SetCellValue("Users", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
-      f.SetCellValue("Users", fmt.Sprintf("D%d", rIdx), toStr(row["nip"]))
-      f.SetCellValue("Users", fmt.Sprintf("E%d", rIdx), toStr(row["role"]))
-      f.SetCellValue("Users", fmt.Sprintf("F%d", rIdx), toStr(row["status"]))
-      f.SetCellValue("Users", fmt.Sprintf("G%d", rIdx), toStr(row["telepon"]))
-      f.SetCellValue("Users", fmt.Sprintf("H%d", rIdx), toStr(row["alamat"]))
-    }
+		for i, row := range rows {
+			rIdx := i + 2
+			f.SetCellValue("Users", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+			f.SetCellValue("Users", fmt.Sprintf("B%d", rIdx), toStr(row["email"]))
+			f.SetCellValue("Users", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
+			f.SetCellValue("Users", fmt.Sprintf("D%d", rIdx), toStr(row["nip"]))
+			f.SetCellValue("Users", fmt.Sprintf("E%d", rIdx), toStr(row["role"]))
+			f.SetCellValue("Users", fmt.Sprintf("F%d", rIdx), toStr(row["status"]))
+			f.SetCellValue("Users", fmt.Sprintf("G%d", rIdx), toStr(row["telepon"]))
+			f.SetCellValue("Users", fmt.Sprintf("H%d", rIdx), toStr(row["alamat"]))
+		}
 
-    f.SetColWidth("Users", "A", "A", 36)
-    f.SetColWidth("Users", "B", "B", 25)
-    f.SetColWidth("Users", "C", "C", 25)
-    f.SetColWidth("Users", "D", "D", 20)
-    f.SetColWidth("Users", "H", "H", 40)
+		f.SetColWidth("Users", "A", "A", 36)
+		f.SetColWidth("Users", "B", "B", 25)
+		f.SetColWidth("Users", "C", "C", 25)
+		f.SetColWidth("Users", "D", "D", 20)
+		f.SetColWidth("Users", "H", "H", 40)
 
-    var buf bytes.Buffer
-    if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+		var buf bytes.Buffer
+		if err := f.Write(&buf); err != nil {
+			serverErr(w, err)
+			return
+		}
 
-    w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=users_export_%s.xlsx", time.Now().Format("2006-01-02")))
-    w.Write(buf.Bytes())
-    return
-  }
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=users_export_%s.xlsx", time.Now().Format("2006-01-02")))
+		w.Write(buf.Bytes())
+		return
+	}
 
-  // Fallback to JSON
-  data := make([]map[string]any, len(rows))
-  for i, row := range rows {
-    data[i] = map[string]any{
-      "id":      toStr(row["id"]),
-      "email":   toStr(row["email"]),
-      "nama":    toStr(row["nama"]),
-      "nip":     toStr(row["nip"]),
-      "role":    toStr(row["role"]),
-      "status":  toStr(row["status"]),
-      "telepon": toStr(row["telepon"]),
-      "alamat":  toStr(row["alamat"]),
-    }
-  }
+	// Fallback to JSON
+	data := make([]map[string]any, len(rows))
+	for i, row := range rows {
+		data[i] = map[string]any{
+			"id":      toStr(row["id"]),
+			"email":   toStr(row["email"]),
+			"nama":    toStr(row["nama"]),
+			"nip":     toStr(row["nip"]),
+			"role":    toStr(row["role"]),
+			"status":  toStr(row["status"]),
+			"telepon": toStr(row["telepon"]),
+			"alamat":  toStr(row["alamat"]),
+		}
+	}
 
-  w.Header().Set("Content-Type", "application/json")
-  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=users_export_%s.json", time.Now().Format("2006-01-02")))
-  json.NewEncoder(w).Encode(map[string]any{"success": true, "data": data})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=users_export_%s.json", time.Now().Format("2006-01-02")))
+	json.NewEncoder(w).Encode(map[string]any{"success": true, "data": data})
 }
 
 func (a *App) downloadUserTemplate(w http.ResponseWriter, r *http.Request) {
-  format := r.URL.Query().Get("format")
-  if format == "" { format = "xlsx" }
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "xlsx"
+	}
 
-  if format == "xlsx" {
-    f := excelize.NewFile()
-    f.SetSheetName("Sheet1", "Users")
+	if format == "xlsx" {
+		f := excelize.NewFile()
+		f.SetSheetName("Sheet1", "Users")
 
-    headerStyle, _ := f.NewStyle(&excelize.Style{
-      Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
-      Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-      Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-    })
+		headerStyle, _ := f.NewStyle(&excelize.Style{
+			Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
+			Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+			Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		})
 
-    headers := []string{"ID", "Email", "Password", "Nama", "NIP", "Role", "Telepon", "Alamat"}
-    for i, h := range headers {
-      cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-      f.SetCellValue("Users", cell, h)
-      f.SetCellStyle("Users", cell, cell, headerStyle)
-    }
+		headers := []string{"ID", "Email", "Password", "Nama", "NIP", "Role", "Telepon", "Alamat"}
+		for i, h := range headers {
+			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+			f.SetCellValue("Users", cell, h)
+			f.SetCellStyle("Users", cell, cell, headerStyle)
+		}
 
-    samples := [][]interface{}{
-      {"", "guru1@school.id", "password123", "Guru Satu, S.Pd", "199001012020011001", "guru", "08123456789", "Jl. Sekolah No. 1"},
-      {"", "admin2@school.id", "password123", "Admin Dua", "199101012021011002", "admin", "08123456790", "Jl. Sekolah No. 2"},
-    }
+		samples := [][]interface{}{
+			{"", "guru1@school.id", "password123", "Guru Satu, S.Pd", "199001012020011001", "guru", "08123456789", "Jl. Sekolah No. 1"},
+			{"", "admin2@school.id", "password123", "Admin Dua", "199101012021011002", "admin", "08123456790", "Jl. Sekolah No. 2"},
+		}
 
-    for i, sample := range samples {
-      row := i + 2
-      for j, val := range sample {
-        cell, _ := excelize.CoordinatesToCellName(j+1, row)
-        f.SetCellValue("Users", cell, val)
-      }
-    }
+		for i, sample := range samples {
+			row := i + 2
+			for j, val := range sample {
+				cell, _ := excelize.CoordinatesToCellName(j+1, row)
+				f.SetCellValue("Users", cell, val)
+			}
+		}
 
-    colWidths := []float64{36, 25, 15, 25, 20, 12, 15, 30}
-    for i, w := range colWidths {
-      colName := string(rune('A' + i))
-      f.SetColWidth("Users", colName, colName, w)
-    }
+		colWidths := []float64{36, 25, 15, 25, 20, 12, 15, 30}
+		for i, w := range colWidths {
+			colName := string(rune('A' + i))
+			f.SetColWidth("Users", colName, colName, w)
+		}
 
-    var buf bytes.Buffer
-    if err := f.Write(&buf); err != nil {
-      serverErr(w, err)
-      return
-    }
+		var buf bytes.Buffer
+		if err := f.Write(&buf); err != nil {
+			serverErr(w, err)
+			return
+		}
 
-    w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    w.Header().Set("Content-Disposition", "attachment; filename=template_users.xlsx")
-    w.Write(buf.Bytes())
-  } else {
-    w.Header().Set("Content-Type", "text/csv")
-    w.Header().Set("Content-Disposition", "attachment; filename=template_users.csv")
-    template := `id,email,password,nama,nip,role,telepon,alamat
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", "attachment; filename=template_users.xlsx")
+		w.Write(buf.Bytes())
+	} else {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=template_users.csv")
+		template := `id,email,password,nama,nip,role,telepon,alamat
 ,guru1@school.id,password123,"Guru Satu, S.Pd",199001012020011001,guru,08123456789,Jl. Sekolah No. 1
 ,admin2@school.id,password123,Admin Dua,199101012021011002,admin,08123456790,Jl. Sekolah No. 2
 `
-    w.Write([]byte(template))
-  }
+		w.Write([]byte(template))
+	}
 }
 
 func (a *App) importUsers(w http.ResponseWriter, r *http.Request) {
-  err := r.ParseMultipartForm(10 << 20)
-  if err != nil {
-    respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar (max 10MB)"})
-    return
-  }
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar (max 10MB)"})
+		return
+	}
 
-  file, _, err := r.FormFile("file")
-  if err != nil {
-    respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"})
-    return
-  }
-  defer file.Close()
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"})
+		return
+	}
+	defer file.Close()
 
-  content, err := io.ReadAll(file)
-  if err != nil { serverErr(w, err); return }
+	content, err := io.ReadAll(file)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  var data []map[string]any
-  _, fileHeader, _ := r.FormFile("file")
-  isXlsx := strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".xlsx")
+	var data []map[string]any
+	_, fileHeader, _ := r.FormFile("file")
+	isXlsx := strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".xlsx")
 
-  if isXlsx {
-    f, err := excelize.OpenReader(bytes.NewReader(content))
-    if err != nil {
-      respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid: " + err.Error()})
-      return
-    }
-    defer f.Close()
+	if isXlsx {
+		f, err := excelize.OpenReader(bytes.NewReader(content))
+		if err != nil {
+			respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid: " + err.Error()})
+			return
+		}
+		defer f.Close()
 
-    sheetName := "Users"
-    if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
-      sheetName = f.GetSheetName(0)
-    }
-    rows, err := f.GetRows(sheetName)
-    if err != nil {
-      respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Users' tidak ditemukan"})
-      return
-    }
+		sheetName := "Users"
+		if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+			sheetName = f.GetSheetName(0)
+		}
+		rows, err := f.GetRows(sheetName)
+		if err != nil {
+			respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Users' tidak ditemukan"})
+			return
+		}
 
-    headerRowIndex := findHeaderRow(rows, []string{"email"}, []string{"nama", "name"})
-    if headerRowIndex == -1 {
-      respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
-      return
-    }
+		headerRowIndex := findHeaderRow(rows, []string{"email"}, []string{"nama", "name"})
+		if headerRowIndex == -1 {
+			respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+			return
+		}
 
-    fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
-      "email": {"email"},
-      "password": {"password", "kata sandi"},
-      "nama": {"nama", "name"},
-      "nip": {"nip"},
-      "role": {"role", "peran"},
-      "telepon": {"telepon", "no telepon", "nomor telepon", "phone"},
-      "alamat": {"alamat", "address"},
-    })
+		fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+			"email":    {"email"},
+			"password": {"password", "kata sandi"},
+			"nama":     {"nama", "name"},
+			"nip":      {"nip"},
+			"role":     {"role", "peran"},
+			"telepon":  {"telepon", "no telepon", "nomor telepon", "phone"},
+			"alamat":   {"alamat", "address"},
+		})
 
-    for i := headerRowIndex + 1; i < len(rows); i++ {
-      row := rows[i]
-      item := make(map[string]any)
-      for field, idx := range fieldIndexes {
-        item[field] = getRowCell(row, idx)
-      }
-      if email := strings.TrimSpace(toStr(item["email"])); email != "" {
-        data = append(data, item)
-      }
-    }
-  } else {
-    records, err := parseCSVRecords(content)
-    if err != nil {
-      respond(w, 400, map[string]any{"success": false, "message": "File CSV tidak valid"})
-      return
-    }
-    if len(records) == 0 {
-      respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
-      return
-    }
+		for i := headerRowIndex + 1; i < len(rows); i++ {
+			row := rows[i]
+			item := make(map[string]any)
+			for field, idx := range fieldIndexes {
+				item[field] = getRowCell(row, idx)
+			}
+			if email := strings.TrimSpace(toStr(item["email"])); email != "" {
+				data = append(data, item)
+			}
+		}
+	} else {
+		records, err := parseCSVRecords(content)
+		if err != nil {
+			respond(w, 400, map[string]any{"success": false, "message": "File CSV tidak valid"})
+			return
+		}
+		if len(records) == 0 {
+			respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+			return
+		}
 
-    fieldIndexes := buildHeaderIndex(records[0], map[string][]string{
-      "email": {"email"},
-      "password": {"password", "kata sandi"},
-      "nama": {"nama", "name"},
-      "nip": {"nip"},
-      "role": {"role", "peran"},
-      "telepon": {"telepon", "no telepon", "nomor telepon", "phone"},
-      "alamat": {"alamat", "address"},
-    })
+		fieldIndexes := buildHeaderIndex(records[0], map[string][]string{
+			"email":    {"email"},
+			"password": {"password", "kata sandi"},
+			"nama":     {"nama", "name"},
+			"nip":      {"nip"},
+			"role":     {"role", "peran"},
+			"telepon":  {"telepon", "no telepon", "nomor telepon", "phone"},
+			"alamat":   {"alamat", "address"},
+		})
 
-    for i := 1; i < len(records); i++ {
-      row := make(map[string]any)
-      for field, idx := range fieldIndexes {
-        row[field] = getRowCell(records[i], idx)
-      }
-      if email := strings.TrimSpace(toStr(row["email"])); email != "" {
-        data = append(data, row)
-      }
-    }
-  }
+		for i := 1; i < len(records); i++ {
+			row := make(map[string]any)
+			for field, idx := range fieldIndexes {
+				row[field] = getRowCell(records[i], idx)
+			}
+			if email := strings.TrimSpace(toStr(row["email"])); email != "" {
+				data = append(data, row)
+			}
+		}
+	}
 
-  if len(data) == 0 {
-    respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
-    return
-  }
+	if len(data) == 0 {
+		respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+		return
+	}
 
-  imported := 0
-  actor := currentUser(r)
-  for _, item := range data {
-    email := strings.TrimSpace(toStr(item["email"]))
-    if email == "" { continue }
+	imported := 0
+	actor := currentUser(r)
+	for _, item := range data {
+		email := strings.TrimSpace(toStr(item["email"]))
+		if email == "" {
+			continue
+		}
 
-    password := toStr(item["password"])
-    nama := toStr(item["nama"])
-    nip := toStr(item["nip"])
-    role := toStr(item["role"])
-    if role == "" { role = "guru" }
-    telepon := toStr(item["telepon"])
-    alamat := toStr(item["alamat"])
+		password := toStr(item["password"])
+		nama := toStr(item["nama"])
+		nip := toStr(item["nip"])
+		role := toStr(item["role"])
+		if role == "" {
+			role = "guru"
+		}
+		telepon := toStr(item["telepon"])
+		alamat := toStr(item["alamat"])
 
-    // Security check: Only superadmin can create/update superadmin
-    if role == "superadmin" && (actor == nil || actor.Role != "superadmin") {
-      continue
-    }
+		// Security check: Only superadmin can create/update superadmin
+		if role == "superadmin" && (actor == nil || actor.Role != "superadmin") {
+			continue
+		}
 
-    var targetRole string
-    var id string
-    err := a.db.QueryRow(r.Context(), "SELECT id, role FROM users WHERE email=$1", email).Scan(&id, &targetRole)
-    if err == nil {
-      // Security check: Only superadmin can update a superadmin account
-      if targetRole == "superadmin" && (actor == nil || actor.Role != "superadmin") {
-        continue
-      }
-      // Update
-      _, err = a.db.Exec(r.Context(),
-        "UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), nip=COALESCE(NULLIF($2,''),nip), role=COALESCE(NULLIF($3,''),role), telepon=COALESCE(NULLIF($4,''),telepon), alamat=COALESCE(NULLIF($5,''),alamat), updated_at=NOW() WHERE id=$6",
-        nama, nip, role, telepon, alamat, id)
-    } else {
-      // Insert
-      if password == "" { password = "password123" }
-      hash, _ := bcrypt.GenerateFromPassword([]byte(password), 10)
-      _, err = a.db.Exec(r.Context(),
-        "INSERT INTO users (email, password, nama, nip, role, telepon, alamat) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        email, string(hash), nama, nip, role, telepon, alamat)
-    }
-    if err == nil { imported++ }
-  }
+		var targetRole string
+		var id string
+		err := a.db.QueryRow(r.Context(), "SELECT id, role FROM users WHERE email=$1", email).Scan(&id, &targetRole)
+		if err == nil {
+			// Security check: Only superadmin can update a superadmin account
+			if targetRole == "superadmin" && (actor == nil || actor.Role != "superadmin") {
+				continue
+			}
+			// Update
+			_, err = a.db.Exec(r.Context(),
+				"UPDATE users SET nama=COALESCE(NULLIF($1,''),nama), nip=COALESCE(NULLIF($2,''),nip), role=COALESCE(NULLIF($3,''),role), telepon=COALESCE(NULLIF($4,''),telepon), alamat=COALESCE(NULLIF($5,''),alamat), updated_at=NOW() WHERE id=$6",
+				nama, nip, role, telepon, alamat, id)
+		} else {
+			// Insert
+			if password == "" {
+				password = "password123"
+			}
+			hash, _ := bcrypt.GenerateFromPassword([]byte(password), 10)
+			_, err = a.db.Exec(r.Context(),
+				"INSERT INTO users (email, password, nama, nip, role, telepon, alamat) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+				email, string(hash), nama, nip, role, telepon, alamat)
+		}
+		if err == nil {
+			imported++
+		}
+	}
 
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d user", imported), "data": map[string]int{"imported": imported}})
+	respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d user", imported), "data": map[string]int{"imported": imported}})
 }
 
 func (a *App) listUsers(w http.ResponseWriter, r *http.Request) {
-  rows, err := a.many(r.Context(), "SELECT id,email,nama,nip,role,status,foto,telepon,alamat,tanggal_lahir AS \"tanggalLahir\",tempat_lahir AS \"tempatLahir\",tanggal_bergabung AS \"tanggalBergabung\",terakhir_login AS \"terakhirLogin\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM users ORDER BY created_at DESC")
-  if err != nil { serverErr(w, err); return }
-  role := r.URL.Query().Get("role")
-  status := r.URL.Query().Get("status")
-  search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("search")))
-  out := make([]map[string]any, 0, len(rows))
-  for _, u := range rows {
-    if role != "" && toStr(u["role"]) != role { continue }
-    if status != "" && toStr(u["status"]) != status { continue }
-    if search != "" {
-      if !strings.Contains(strings.ToLower(toStr(u["nama"])), search) && !strings.Contains(strings.ToLower(toStr(u["email"])), search) && !strings.Contains(strings.ToLower(toStr(u["nip"])), search) { continue }
-    }
-    out = append(out, u)
-  }
-  respond(w, 200, map[string]any{"success": true, "data": out})
+	rows, err := a.many(r.Context(), "SELECT id,email,nama,nip,role,status,foto,telepon,alamat,tanggal_lahir AS \"tanggalLahir\",tempat_lahir AS \"tempatLahir\",tanggal_bergabung AS \"tanggalBergabung\",terakhir_login AS \"terakhirLogin\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM users ORDER BY created_at DESC")
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	role := r.URL.Query().Get("role")
+	status := r.URL.Query().Get("status")
+	search := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("search")))
+	out := make([]map[string]any, 0, len(rows))
+	for _, u := range rows {
+		if role != "" && toStr(u["role"]) != role {
+			continue
+		}
+		if status != "" && toStr(u["status"]) != status {
+			continue
+		}
+		if search != "" {
+			if !strings.Contains(strings.ToLower(toStr(u["nama"])), search) && !strings.Contains(strings.ToLower(toStr(u["email"])), search) && !strings.Contains(strings.ToLower(toStr(u["nip"])), search) {
+				continue
+			}
+		}
+		out = append(out, u)
+	}
+	respond(w, 200, map[string]any{"success": true, "data": out})
 }
 
 func (a *App) getUser(w http.ResponseWriter, r *http.Request) {
-  id := chi.URLParam(r, "id")
-  row, err := a.one(r.Context(), "SELECT id,email,nama,nip,role,status,foto,telepon,alamat,tanggal_lahir AS \"tanggalLahir\",tempat_lahir AS \"tempatLahir\",tanggal_bergabung AS \"tanggalBergabung\",terakhir_login AS \"terakhirLogin\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM users WHERE id=$1", id)
-  if err != nil { serverErr(w, err); return }
-  if row == nil { respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."}); return }
-  respond(w, 200, map[string]any{"success": true, "data": row})
+	id := chi.URLParam(r, "id")
+	row, err := a.one(r.Context(), "SELECT id,email,nama,nip,role,status,foto,telepon,alamat,tanggal_lahir AS \"tanggalLahir\",tempat_lahir AS \"tempatLahir\",tanggal_bergabung AS \"tanggalBergabung\",terakhir_login AS \"terakhirLogin\",created_at AS \"createdAt\",updated_at AS \"updatedAt\" FROM users WHERE id=$1", id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	if row == nil {
+		respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."})
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "data": row})
 }
 
 func (a *App) createUser(w http.ResponseWriter, r *http.Request) {
-  a.register(w, r)
+	a.register(w, r)
 }
 
 func (a *App) updateUser(w http.ResponseWriter, r *http.Request) {
-  id := chi.URLParam(r, "id")
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  actor := currentUser(r)
-  
-  // Ambil data user yang akan diupdate untuk pengecekan
-  old, err := a.one(r.Context(), "SELECT id, role, email, nip FROM users WHERE id=$1", id)
-  if err != nil || old == nil { respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."}); return }
+	id := chi.URLParam(r, "id")
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	actor := currentUser(r)
 
-  if toStr(body["role"]) == "superadmin" && (actor == nil || actor.Role != "superadmin") {
-    respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mengubah role ke superadmin."}); return
-  }
+	// Ambil data user yang akan diupdate untuk pengecekan
+	old, err := a.one(r.Context(), "SELECT id, role, email, nip FROM users WHERE id=$1", id)
+	if err != nil || old == nil {
+		respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."})
+		return
+	}
 
-  email := strings.TrimSpace(toStr(body["email"]))
-  nip := strings.TrimSpace(toStr(body["nip"]))
+	if toStr(body["role"]) == "superadmin" && (actor == nil || actor.Role != "superadmin") {
+		respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat mengubah role ke superadmin."})
+		return
+	}
 
-  // Cek apakah email sudah digunakan oleh user lain
-  if email != "" && email != toStr(old["email"]) {
-    exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE email=$1 AND id!=$2 LIMIT 1", email, id)
-    if exists != nil { respond(w, 400, map[string]any{"success": false, "message": "Email sudah digunakan oleh user lain."}); return }
-  }
+	email := strings.TrimSpace(toStr(body["email"]))
+	nip := strings.TrimSpace(toStr(body["nip"]))
 
-  // Cek apakah NIP sudah digunakan oleh user lain
-  if nip != "" && nip != toStr(old["nip"]) {
-    exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE nip=$1 AND id!=$2 LIMIT 1", nip, id)
-    if exists != nil { respond(w, 400, map[string]any{"success": false, "message": "NIP sudah digunakan oleh user lain."}); return }
-  }
+	// Cek apakah email sudah digunakan oleh user lain
+	if email != "" && email != toStr(old["email"]) {
+		exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE email=$1 AND id!=$2 LIMIT 1", email, id)
+		if exists != nil {
+			respond(w, 400, map[string]any{"success": false, "message": "Email sudah digunakan oleh user lain."})
+			return
+		}
+	}
 
-  _, err = a.db.Exec(r.Context(), `
+	// Cek apakah NIP sudah digunakan oleh user lain
+	if nip != "" && nip != toStr(old["nip"]) {
+		exists, _ := a.one(r.Context(), "SELECT id FROM users WHERE nip=$1 AND id!=$2 LIMIT 1", nip, id)
+		if exists != nil {
+			respond(w, 400, map[string]any{"success": false, "message": "NIP sudah digunakan oleh user lain."})
+			return
+		}
+	}
+
+	_, err = a.db.Exec(r.Context(), `
     UPDATE users SET 
       nama=COALESCE(NULLIF($1,''), nama), 
       email=COALESCE(NULLIF($2,''), email), 
@@ -637,581 +781,1074 @@ func (a *App) updateUser(w http.ResponseWriter, r *http.Request) {
       telepon=$6, 
       alamat=$7, 
       updated_at=NOW() 
-    WHERE id=$8`, 
-    toStr(body["nama"]), email, nip, toStr(body["role"]), toStr(body["status"]), toStr(body["telepon"]), toStr(body["alamat"]), id)
-  
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "message": "User berhasil diperbarui."})
+    WHERE id=$8`,
+		toStr(body["nama"]), email, nip, toStr(body["role"]), toStr(body["status"]), toStr(body["telepon"]), toStr(body["alamat"]), id)
+
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": "User berhasil diperbarui."})
 }
 
 func (a *App) deleteUser(w http.ResponseWriter, r *http.Request) {
-  id := chi.URLParam(r, "id")
-  row, _ := a.one(r.Context(), "SELECT id,role FROM users WHERE id=$1", id)
-  if row == nil { respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."}); return }
-  
-  actor := currentUser(r)
-  targetRole := toStr(row["role"])
-  
-  if targetRole == "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Tidak dapat menghapus user superadmin."}); return }
-  if targetRole == "admin" && actor.Role != "superadmin" { respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat menghapus admin lain."}); return }
+	id := chi.URLParam(r, "id")
+	row, _ := a.one(r.Context(), "SELECT id,role FROM users WHERE id=$1", id)
+	if row == nil {
+		respond(w, 404, map[string]any{"success": false, "message": "User tidak ditemukan."})
+		return
+	}
 
-  _, err := a.db.Exec(r.Context(), "DELETE FROM users WHERE id=$1", id)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "message": "User berhasil dihapus."})
+	actor := currentUser(r)
+	targetRole := toStr(row["role"])
+
+	if targetRole == "superadmin" {
+		respond(w, 403, map[string]any{"success": false, "message": "Tidak dapat menghapus user superadmin."})
+		return
+	}
+	if targetRole == "admin" && actor.Role != "superadmin" {
+		respond(w, 403, map[string]any{"success": false, "message": "Hanya superadmin yang dapat menghapus admin lain."})
+		return
+	}
+
+	_, err := a.db.Exec(r.Context(), "DELETE FROM users WHERE id=$1", id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": "User berhasil dihapus."})
 }
 
 func (a *App) resetPassword(w http.ResponseWriter, r *http.Request) {
-  id := chi.URLParam(r, "id")
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  newPass := toStr(body["newPassword"])
-  if newPass == "" { respond(w, 400, map[string]any{"success": false, "message": "Password baru wajib diisi."}); return }
-  hash, _ := bcrypt.GenerateFromPassword([]byte(newPass), 10)
-  _, err = a.db.Exec(r.Context(), "UPDATE users SET password=$1, updated_at=NOW() WHERE id=$2", string(hash), id)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "message": "Password berhasil direset."})
+	id := chi.URLParam(r, "id")
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	newPass := toStr(body["newPassword"])
+	if newPass == "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Password baru wajib diisi."})
+		return
+	}
+	hash, _ := bcrypt.GenerateFromPassword([]byte(newPass), 10)
+	_, err = a.db.Exec(r.Context(), "UPDATE users SET password=$1, updated_at=NOW() WHERE id=$2", string(hash), id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": "Password berhasil direset."})
+}
+
+func pickFirst(body map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if val := strings.TrimSpace(toStr(body[key])); val != "" {
+			return val
+		}
+	}
+	return ""
+}
+
+func (a *App) resolveUserRef(ctx context.Context, ref string) (string, string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", "", nil
+	}
+	row, err := a.one(ctx, "SELECT id,nama FROM users WHERE id::text=$1 OR email=$1 OR nip=$1 OR nama=$1 LIMIT 1", ref)
+	if err != nil || row == nil {
+		return "", "", errors.New("user tidak ditemukan")
+	}
+	return toStr(row["id"]), toStr(row["nama"]), nil
+}
+
+func (a *App) resolveKelasRef(ctx context.Context, ref string) (string, string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", "", nil
+	}
+	row, err := a.one(ctx, "SELECT id,COALESCE(NULLIF(nama_kelas,''), nama) AS nama FROM data_kelas WHERE id::text=$1 OR nama=$1 OR nama_kelas=$1 LIMIT 1", ref)
+	if err != nil || row == nil {
+		return "", "", errors.New("kelas tidak ditemukan")
+	}
+	return toStr(row["id"]), toStr(row["nama"]), nil
 }
 
 func (a *App) sekolahRoutes() chi.Router {
-  r := chi.NewRouter()
-  r.Get("/sekolah", func(w http.ResponseWriter, r *http.Request) { a.simpleLatest(w, r, "data_sekolah") })
-  r.With(a.authorizeHierarchy("admin")).Post("/sekolah", func(w http.ResponseWriter, r *http.Request) { a.simpleUpsertSingle(w, r, "data_sekolah", "Data sekolah berhasil disimpan.") })
-  r.Get("/informasi", func(w http.ResponseWriter, r *http.Request) { a.simpleLatest(w, r, "informasi_umum") })
-  r.With(a.authorizeHierarchy("admin")).Post("/informasi", func(w http.ResponseWriter, r *http.Request) { a.simpleUpsertSingle(w, r, "informasi_umum", "Informasi umum berhasil disimpan.") })
-  r.With(a.authorizeHierarchy("guru")).Get("/kelas/export", a.exportKelas)
-  r.With(a.authorizeHierarchy("admin")).Post("/kelas/import", a.importKelas)
-  r.With(a.authorizeHierarchy("guru")).Get("/kelas/template", a.downloadKelasTemplate)
-  r.With(a.authorizeHierarchy("guru")).Get("/kelas", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "data_kelas", nil) })
-  r.With(a.authorizeHierarchy("admin")).Post("/kelas", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "data_kelas", "Kelas berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("admin")).Put("/kelas/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "data_kelas", "Data kelas berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("admin")).Delete("/kelas/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "data_kelas", "Kelas berhasil dihapus.") })
-  return r
+	r := chi.NewRouter()
+	r.Get("/sekolah", func(w http.ResponseWriter, r *http.Request) { a.simpleLatest(w, r, "data_sekolah") })
+	r.With(a.authorizeHierarchy("admin")).Post("/sekolah", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpsertSingle(w, r, "data_sekolah", "Data sekolah berhasil disimpan.")
+	})
+	r.Get("/informasi", func(w http.ResponseWriter, r *http.Request) { a.simpleLatest(w, r, "informasi_umum") })
+	r.With(a.authorizeHierarchy("admin")).Post("/informasi", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpsertSingle(w, r, "informasi_umum", "Informasi umum berhasil disimpan.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Get("/kelas/export", a.exportKelas)
+	r.With(a.authorizeHierarchy("admin")).Post("/kelas/import", a.importKelas)
+	r.With(a.authorizeHierarchy("guru")).Get("/kelas/template", a.downloadKelasTemplate)
+	r.With(a.authorizeHierarchy("guru")).Get("/kelas", a.listKelas)
+	r.With(a.authorizeHierarchy("admin")).Post("/kelas", a.createKelas)
+	r.With(a.authorizeHierarchy("admin")).Put("/kelas/{id}", a.updateKelas)
+	r.With(a.authorizeHierarchy("admin")).Delete("/kelas/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "data_kelas", "Kelas berhasil dihapus.")
+	})
+	return r
+}
+
+func (a *App) listKelas(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.many(r.Context(), `
+    SELECT k.id,
+      COALESCE(NULLIF(k.nama_kelas,''), k.nama) AS nama,
+      COALESCE(NULLIF(k.nama_kelas,''), k.nama) AS "namaKelas",
+      k.nama_kelas AS "namaKelasDiagram",
+      k.wali_kelas_id AS "waliKelasId",
+      COALESCE(u.nama, k.wali_kelas) AS "waliKelas",
+      k.keterangan,
+      k.created_at AS "createdAt",
+      k.updated_at AS "updatedAt"
+    FROM data_kelas k
+    LEFT JOIN users u ON u.id = k.wali_kelas_id
+    ORDER BY COALESCE(NULLIF(k.nama_kelas,''), k.nama)
+  `)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "data": rows})
+}
+
+func (a *App) saveKelas(w http.ResponseWriter, r *http.Request, id string) {
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	namaKelas := pickFirst(body, "namaKelas", "nama_kelas", "nama")
+	waliKelasRef := pickFirst(body, "waliKelasId", "wali_kelas_id", "waliKelas", "wali_kelas")
+	keterangan := pickFirst(body, "keterangan")
+	if namaKelas == "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Nama kelas wajib diisi."})
+		return
+	}
+	waliKelasID, waliKelasNama, err := a.resolveUserRef(r.Context(), waliKelasRef)
+	if err != nil && waliKelasRef != "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Wali kelas tidak ditemukan."})
+		return
+	}
+
+	var row map[string]any
+	if id == "" {
+		row, err = a.one(r.Context(), `
+      INSERT INTO data_kelas (nama, nama_kelas, wali_kelas_id, wali_kelas, keterangan)
+      VALUES ($1,$2,$3,$4,$5)
+      RETURNING id, COALESCE(NULLIF(nama_kelas,''), nama) AS nama, wali_kelas_id AS "waliKelasId", COALESCE(NULLIF($4,''), wali_kelas) AS "waliKelas", keterangan
+    `, namaKelas, namaKelas, nullIfEmpty(waliKelasID), nullIfEmpty(waliKelasNama), nullIfEmpty(keterangan))
+		if err != nil {
+			serverErr(w, err)
+			return
+		}
+		respond(w, 201, map[string]any{"success": true, "message": "Kelas berhasil ditambahkan.", "data": row})
+		return
+	}
+
+	row, err = a.one(r.Context(), `
+    UPDATE data_kelas
+    SET nama=$1, nama_kelas=$2, wali_kelas_id=$3, wali_kelas=$4, keterangan=$5, updated_at=NOW()
+    WHERE id=$6
+    RETURNING id, COALESCE(NULLIF(nama_kelas,''), nama) AS nama, wali_kelas_id AS "waliKelasId", wali_kelas AS "waliKelas", keterangan
+  `, namaKelas, namaKelas, nullIfEmpty(waliKelasID), nullIfEmpty(waliKelasNama), nullIfEmpty(keterangan), id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": "Data kelas berhasil diperbarui.", "data": row})
+}
+
+func (a *App) createKelas(w http.ResponseWriter, r *http.Request) { a.saveKelas(w, r, "") }
+func (a *App) updateKelas(w http.ResponseWriter, r *http.Request) {
+	a.saveKelas(w, r, chi.URLParam(r, "id"))
 }
 
 func (a *App) siswaRoutes() chi.Router {
-  r := chi.NewRouter()
-  r.With(a.authorizeHierarchy("guru")).Get("/", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "data_siswa", map[string]string{"kelas": "kelas", "status": "status"}) })
-  r.With(a.authorizeHierarchy("guru")).Get("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleGetByID(w, r, "data_siswa", "Siswa tidak ditemukan.") })
-  r.With(a.authorizeHierarchy("wali_kelas")).Post("/", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "data_siswa", "Siswa berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("guru")).Put("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "data_siswa", "Data siswa berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("wali_kelas")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "data_siswa", "Siswa berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("wali_kelas")).Post("/import", a.importSiswa)
-  return r
+	r := chi.NewRouter()
+	r.With(a.authorizeHierarchy("guru")).Get("/", a.listSiswa)
+	r.With(a.authorizeHierarchy("guru")).Get("/{id}", a.getSiswa)
+	r.With(a.authorizeHierarchy("wali_kelas")).Post("/", a.createSiswa)
+	r.With(a.authorizeHierarchy("guru")).Put("/{id}", a.updateSiswa)
+	r.With(a.authorizeHierarchy("wali_kelas")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "data_siswa", "Siswa berhasil dihapus.")
+	})
+	r.With(a.authorizeHierarchy("wali_kelas")).Post("/import", a.importSiswa)
+	return r
+}
+
+func (a *App) listSiswa(w http.ResponseWriter, r *http.Request) {
+	selectedKelas := strings.TrimSpace(r.URL.Query().Get("kelas"))
+	status := strings.TrimSpace(r.URL.Query().Get("status"))
+	rows, err := a.many(r.Context(), `
+    SELECT s.id, s.nis, s.nisn,
+      COALESCE(NULLIF(s.nama_lengkap,''), s.nama) AS nama,
+      COALESCE(NULLIF(s.nama_lengkap,''), s.nama) AS "namaLengkap",
+      s.kelas_id AS "kelasId",
+      COALESCE(NULLIF(k.nama_kelas,''), k.nama, s.kelas) AS kelas,
+      s.tempat_lahir AS "tempatLahir",
+      s.tanggal_lahir AS "tanggalLahir",
+      s.jenis_kelamin AS "jenisKelamin",
+      s.agama,
+      s.status,
+      s.alamat,
+      COALESCE(NULLIF(s.nama_orang_tua,''), s.nama_ortu) AS "namaOrtu",
+      COALESCE(NULLIF(s.nama_orang_tua,''), s.nama_ortu) AS "namaOrangTua",
+      COALESCE(NULLIF(s.telepon_orang_tua,''), s.telepon_ortu) AS "teleponOrtu",
+      COALESCE(NULLIF(s.telepon_orang_tua,''), s.telepon_ortu) AS "teleponOrangTua",
+      s.tanggal_masuk AS "tanggalMasuk",
+      s.created_at AS "createdAt",
+      s.updated_at AS "updatedAt"
+    FROM data_siswa s
+    LEFT JOIN data_kelas k ON k.id = s.kelas_id
+    ORDER BY COALESCE(NULLIF(k.nama_kelas,''), k.nama, s.kelas), COALESCE(NULLIF(s.nama_lengkap,''), s.nama)
+  `)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	filtered := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if selectedKelas != "" && toStr(row["kelas"]) != selectedKelas && toStr(row["kelasId"]) != selectedKelas {
+			continue
+		}
+		if status != "" && toStr(row["status"]) != status {
+			continue
+		}
+		filtered = append(filtered, row)
+	}
+	respond(w, 200, map[string]any{"success": true, "data": filtered})
+}
+
+func (a *App) getSiswa(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	row, err := a.one(r.Context(), `
+    SELECT s.id, s.nis, s.nisn,
+      COALESCE(NULLIF(s.nama_lengkap,''), s.nama) AS nama,
+      COALESCE(NULLIF(s.nama_lengkap,''), s.nama) AS "namaLengkap",
+      s.kelas_id AS "kelasId",
+      COALESCE(NULLIF(k.nama_kelas,''), k.nama, s.kelas) AS kelas,
+      s.tempat_lahir AS "tempatLahir",
+      s.tanggal_lahir AS "tanggalLahir",
+      s.jenis_kelamin AS "jenisKelamin",
+      s.agama, s.status, s.alamat,
+      COALESCE(NULLIF(s.nama_orang_tua,''), s.nama_ortu) AS "namaOrtu",
+      COALESCE(NULLIF(s.telepon_orang_tua,''), s.telepon_ortu) AS "teleponOrtu",
+      s.tanggal_masuk AS "tanggalMasuk"
+    FROM data_siswa s
+    LEFT JOIN data_kelas k ON k.id = s.kelas_id
+    WHERE s.id=$1
+  `, id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	if row == nil {
+		respond(w, 404, map[string]any{"success": false, "message": "Siswa tidak ditemukan."})
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "data": row})
+}
+
+func (a *App) saveSiswa(w http.ResponseWriter, r *http.Request, id string) {
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	nisn := pickFirst(body, "nisn")
+	nama := pickFirst(body, "namaLengkap", "nama_lengkap", "nama")
+	if nisn == "" || nama == "" {
+		respond(w, 400, map[string]any{"success": false, "message": "NISN dan nama siswa wajib diisi."})
+		return
+	}
+	kelasRef := pickFirst(body, "kelasId", "kelas_id", "kelas")
+	kelasID, kelasNama, err := a.resolveKelasRef(r.Context(), kelasRef)
+	if err != nil && kelasRef != "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Kelas tidak ditemukan."})
+		return
+	}
+	args := []any{
+		nullIfEmpty(pickFirst(body, "nis")), nisn, nama, nama,
+		nullIfEmpty(pickFirst(body, "tempatLahir", "tempat_lahir")),
+		nullIfEmpty(pickFirst(body, "tanggalLahir", "tanggal_lahir")),
+		coalesceVal(pickFirst(body, "jenisKelamin", "jenis_kelamin"), "L"),
+		nullIfEmpty(pickFirst(body, "agama")),
+		nullIfEmpty(pickFirst(body, "alamat")),
+		namaOrtuOrDefault(body),
+		namaOrtuOrDefault(body),
+		nullIfEmpty(pickFirst(body, "teleponOrtu", "telepon_orang_tua", "telepon_ortu")),
+		nullIfEmpty(pickFirst(body, "teleponOrtu", "telepon_orang_tua", "telepon_ortu")),
+		nullIfEmpty(pickFirst(body, "tanggalMasuk", "tanggal_masuk")),
+		nullIfEmpty(kelasID), nullIfEmpty(kelasNama),
+		coalesceVal(pickFirst(body, "status"), "Aktif"),
+	}
+	var row map[string]any
+	if id == "" {
+		row, err = a.one(r.Context(), `
+      INSERT INTO data_siswa (nis, nisn, nama, nama_lengkap, tempat_lahir, tanggal_lahir, jenis_kelamin, agama, alamat, nama_ortu, nama_orang_tua, telepon_ortu, telepon_orang_tua, tanggal_masuk, kelas_id, kelas, status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      RETURNING id
+    `, args...)
+		if err != nil {
+			serverErr(w, err)
+			return
+		}
+		respond(w, 201, map[string]any{"success": true, "message": "Siswa berhasil ditambahkan.", "data": row})
+		return
+	}
+	args = append(args, id)
+	_, err = a.db.Exec(r.Context(), `
+    UPDATE data_siswa SET nis=$1, nisn=$2, nama=$3, nama_lengkap=$4, tempat_lahir=$5, tanggal_lahir=$6, jenis_kelamin=$7, agama=$8, alamat=$9, nama_ortu=$10, nama_orang_tua=$11, telepon_ortu=$12, telepon_orang_tua=$13, tanggal_masuk=$14, kelas_id=$15, kelas=$16, status=$17, updated_at=NOW()
+    WHERE id=$18
+  `, args...)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": "Data siswa berhasil diperbarui."})
+}
+
+func namaOrtuOrDefault(body map[string]any) any {
+	return nullIfEmpty(pickFirst(body, "namaOrangTua", "namaOrtu", "nama_orang_tua", "nama_ortu"))
+}
+
+func (a *App) createSiswa(w http.ResponseWriter, r *http.Request) { a.saveSiswa(w, r, "") }
+func (a *App) updateSiswa(w http.ResponseWriter, r *http.Request) {
+	a.saveSiswa(w, r, chi.URLParam(r, "id"))
 }
 
 func (a *App) importSiswa(w http.ResponseWriter, r *http.Request) {
-  err := r.ParseMultipartForm(10 << 20)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar"}); return }
-
-  file, _, err := r.FormFile("file")
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"}); return }
-  defer file.Close()
-
-  content, _ := io.ReadAll(file)
-  f, err := excelize.OpenReader(bytes.NewReader(content))
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid"}); return }
-  defer f.Close()
-
-  sheetName := "Data Siswa"
-  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
-    sheetName = f.GetSheetName(0)
-  }
-  rows, err := f.GetRows(sheetName)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Data Siswa' tidak ditemukan"}); return }
-
-  headerRowIndex := -1
-  for i := 0; i < len(rows) && i < 15; i++ {
-    normalized := make([]string, 0, len(rows[i]))
-    for _, cell := range rows[i] {
-      normalized = append(normalized, strings.ToLower(strings.TrimSpace(cell)))
-    }
-
-    hasNISN := slices.Contains(normalized, "nisn")
-    hasName := slices.Contains(normalized, "nama lengkap") || slices.Contains(normalized, "nama siswa") || slices.Contains(normalized, "nama")
-    if hasNISN && hasName {
-      headerRowIndex = i
-      break
-    }
-  }
-
-  if headerRowIndex == -1 {
-    respond(w, 400, map[string]any{"success": false, "message": "Format template tidak sesuai"}); return
-  }
-
-  headers := make([]string, 0, len(rows[headerRowIndex]))
-  for _, header := range rows[headerRowIndex] {
-    headers = append(headers, strings.ToLower(strings.TrimSpace(header)))
-  }
-
-  findCol := func(aliases ...string) int {
-    for idx, header := range headers {
-      for _, alias := range aliases {
-        if header == alias {
-          return idx
-        }
-      }
-    }
-    return -1
-  }
-
-  nisIdx := findCol("nis")
-  nisnIdx := findCol("nisn")
-  namaIdx := findCol("nama lengkap", "nama siswa", "nama")
-  jkIdx := findCol("l/p", "jenis kelamin")
-  tempatIdx := findCol("tempat lahir")
-  tglLahirIdx := findCol("tanggal lahir")
-  agamaIdx := findCol("agama")
-  alamatIdx := findCol("alamat")
-  namaOrtuIdx := findCol("nama orang tua", "nama orang tua/wali", "nama wali")
-  teleponIdx := findCol("telepon orang tua", "telepon wali")
-  tglMasukIdx := findCol("tanggal masuk")
-  kelasIdx := findCol("kelas")
-
-  if nisnIdx == -1 || namaIdx == -1 {
-    respond(w, 400, map[string]any{"success": false, "message": "Kolom wajib NISN dan Nama tidak ditemukan"}); return
-  }
-
-  inserted := 0
-  errs := []map[string]any{}
-  
-  getCell := func(row []string, idx int) string {
-    if idx < 0 || idx >= len(row) {
-      return ""
-    }
-    return strings.TrimSpace(row[idx])
-  }
-
-  for i := headerRowIndex + 1; i < len(rows); i++ {
-    row := rows[i]
-    nis := getCell(row, nisIdx)
-    nisn := getCell(row, nisnIdx)
-    nama := getCell(row, namaIdx)
-    
-    if nisn == "" || nama == "" { continue }
-
-    jk := "L"
-    if jkVal := getCell(row, jkIdx); jkVal != "" {
-      val := strings.ToUpper(jkVal)
-      if val == "P" || strings.HasPrefix(val, "PEREMPUAN") { jk = "P" }
-    }
-    
-    tempat := getCell(row, tempatIdx)
-    tgl := getCell(row, tglLahirIdx)
-    agama := getCell(row, agamaIdx)
-    alamat := getCell(row, alamatIdx)
-    namaOrtu := getCell(row, namaOrtuIdx)
-    telepon := getCell(row, teleponIdx)
-    tglMasuk := getCell(row, tglMasukIdx)
-    kelas := getCell(row, kelasIdx)
-
-    _, err = a.db.Exec(r.Context(), 
-      "INSERT INTO data_siswa (nis,nisn,nama,jenis_kelamin,tempat_lahir,tanggal_lahir,agama,alamat,nama_ortu,telepon_ortu,tanggal_masuk,kelas,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (nisn) DO UPDATE SET nis=EXCLUDED.nis, nama=EXCLUDED.nama, jenis_kelamin=EXCLUDED.jenis_kelamin, tempat_lahir=EXCLUDED.tempat_lahir, tanggal_lahir=EXCLUDED.tanggal_lahir, agama=EXCLUDED.agama, alamat=EXCLUDED.alamat, nama_ortu=EXCLUDED.nama_ortu, telepon_ortu=EXCLUDED.telepon_ortu, tanggal_masuk=EXCLUDED.tanggal_masuk, kelas=EXCLUDED.kelas, updated_at=NOW()",
-      nullIfEmpty(nis), nisn, nama, jk, nullIfEmpty(tempat), nullIfEmpty(tgl), nullIfEmpty(agama), nullIfEmpty(alamat), namaOrtu, nullIfEmpty(telepon), nullIfEmpty(tglMasuk), nullIfEmpty(kelas), "Aktif")
-    
-    if err != nil {
-      errs = append(errs, map[string]any{"nisn": nisn, "nama": nama, "error": err.Error()})
-    } else {
-      inserted++
-    }
-  }
-
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil mengimport %d siswa.", inserted), "data": map[string]any{"inserted": inserted, "errors": errs}})
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar"})
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"})
+		return
+	}
+	defer file.Close()
+	content, _ := io.ReadAll(file)
+	f, err := excelize.OpenReader(bytes.NewReader(content))
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid"})
+		return
+	}
+	defer f.Close()
+	sheetName := "Data Siswa"
+	if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+		sheetName = f.GetSheetName(0)
+	}
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Data Siswa' tidak ditemukan"})
+		return
+	}
+	headerRowIndex := findHeaderRow(rows, []string{"nisn"}, []string{"nama lengkap", "nama siswa", "nama"})
+	if headerRowIndex == -1 {
+		respond(w, 400, map[string]any{"success": false, "message": "Format template tidak sesuai"})
+		return
+	}
+	idx := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+		"nis": {"nis"}, "nisn": {"nisn"}, "nama": {"nama lengkap", "nama siswa", "nama"},
+		"jenis_kelamin": {"l/p", "jenis kelamin"}, "tempat_lahir": {"tempat lahir"}, "tanggal_lahir": {"tanggal lahir"},
+		"agama": {"agama"}, "alamat": {"alamat"}, "nama_ortu": {"nama orang tua", "nama orang tua/wali", "nama wali"},
+		"telepon_ortu": {"telepon orang tua", "telepon wali"}, "tanggal_masuk": {"tanggal masuk"}, "kelas": {"kelas"},
+	})
+	inserted := 0
+	errs := []map[string]any{}
+	for i := headerRowIndex + 1; i < len(rows); i++ {
+		row := rows[i]
+		nisn := getRowCell(row, idx["nisn"])
+		nama := getRowCell(row, idx["nama"])
+		if nisn == "" || nama == "" {
+			continue
+		}
+		kelasID, kelasNama, err := a.resolveKelasRef(r.Context(), getRowCell(row, idx["kelas"]))
+		if err != nil && getRowCell(row, idx["kelas"]) != "" {
+			errs = append(errs, map[string]any{"nisn": nisn, "nama": nama, "error": "kelas tidak ditemukan"})
+			continue
+		}
+		_, err = a.db.Exec(r.Context(), `
+      INSERT INTO data_siswa (nis, nisn, nama, nama_lengkap, jenis_kelamin, tempat_lahir, tanggal_lahir, agama, alamat, nama_ortu, nama_orang_tua, telepon_ortu, telepon_orang_tua, tanggal_masuk, kelas_id, kelas, status)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      ON CONFLICT (nisn) DO UPDATE SET
+        nis=EXCLUDED.nis, nama=EXCLUDED.nama, nama_lengkap=EXCLUDED.nama_lengkap, jenis_kelamin=EXCLUDED.jenis_kelamin, tempat_lahir=EXCLUDED.tempat_lahir, tanggal_lahir=EXCLUDED.tanggal_lahir,
+        agama=EXCLUDED.agama, alamat=EXCLUDED.alamat, nama_ortu=EXCLUDED.nama_ortu, nama_orang_tua=EXCLUDED.nama_orang_tua, telepon_ortu=EXCLUDED.telepon_ortu, telepon_orang_tua=EXCLUDED.telepon_orang_tua,
+        tanggal_masuk=EXCLUDED.tanggal_masuk, kelas_id=EXCLUDED.kelas_id, kelas=EXCLUDED.kelas, status=EXCLUDED.status, updated_at=NOW()
+    `, nullIfEmpty(getRowCell(row, idx["nis"])), nisn, nama, nama, coalesceVal(strings.ToUpper(getRowCell(row, idx["jenis_kelamin"])), "L"), nullIfEmpty(getRowCell(row, idx["tempat_lahir"])), nullIfEmpty(getRowCell(row, idx["tanggal_lahir"])), nullIfEmpty(getRowCell(row, idx["agama"])), nullIfEmpty(getRowCell(row, idx["alamat"])), nullIfEmpty(getRowCell(row, idx["nama_ortu"])), nullIfEmpty(getRowCell(row, idx["nama_ortu"])), nullIfEmpty(getRowCell(row, idx["telepon_ortu"])), nullIfEmpty(getRowCell(row, idx["telepon_ortu"])), nullIfEmpty(getRowCell(row, idx["tanggal_masuk"])), nullIfEmpty(kelasID), nullIfEmpty(kelasNama), "Aktif")
+		if err != nil {
+			errs = append(errs, map[string]any{"nisn": nisn, "nama": nama, "error": err.Error()})
+			continue
+		}
+		inserted++
+	}
+	respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil mengimport %d siswa.", inserted), "data": map[string]any{"inserted": inserted, "errors": errs}})
 }
 
 func (a *App) mapelRoutes() chi.Router {
-  r := chi.NewRouter()
-  r.With(a.authorizeHierarchy("guru")).Get("/", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "mata_pelajaran", map[string]string{"fase": "fase", "kelompok": "kelompok"}) })
-  r.With(a.authorizeHierarchy("guru")).Get("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleGetByID(w, r, "mata_pelajaran", "Mata pelajaran tidak ditemukan.") })
-  r.With(a.authorizeHierarchy("wali_kelas")).Post("/", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "mata_pelajaran", "Mata pelajaran berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("wali_kelas")).Put("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "mata_pelajaran", "Mata pelajaran berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("admin")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "mata_pelajaran", "Mata pelajaran berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("guru")).Get("/export", a.exportMapel)
-  r.With(a.authorizeHierarchy("wali_kelas")).Post("/import", a.importMapel)
-  r.With(a.authorizeHierarchy("guru")).Get("/template", a.downloadMapelTemplate)
-  r.With(a.authorizeHierarchy("guru")).Get("/tujuan-pembelajaran", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "tujuan_pembelajaran", map[string]string{"mataPelajaranId": "mata_pelajaran_id", "fase": "fase"}) })
-  r.With(a.authorizeHierarchy("guru")).Post("/tujuan-pembelajaran", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "tujuan_pembelajaran", "Tujuan pembelajaran berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("guru")).Put("/tujuan-pembelajaran/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "tujuan_pembelajaran", "Tujuan pembelajaran berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("guru")).Delete("/tujuan-pembelajaran/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "tujuan_pembelajaran", "Tujuan pembelajaran berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("guru")).Get("/lingkup-materi", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "lingkup_materi", map[string]string{"mataPelajaranId": "mata_pelajaran_id"}) })
-  r.With(a.authorizeHierarchy("guru")).Post("/lingkup-materi", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "lingkup_materi", "Lingkup materi berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("guru")).Put("/lingkup-materi/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "lingkup_materi", "Lingkup materi berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("guru")).Delete("/lingkup-materi/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "lingkup_materi", "Lingkup materi berhasil dihapus.") })
-  return r
+	r := chi.NewRouter()
+	r.With(a.authorizeHierarchy("guru")).Get("/", a.listMapel)
+	r.With(a.authorizeHierarchy("guru")).Get("/{id}", a.getMapel)
+	r.With(a.authorizeHierarchy("wali_kelas")).Post("/", a.createMapel)
+	r.With(a.authorizeHierarchy("wali_kelas")).Put("/{id}", a.updateMapel)
+	r.With(a.authorizeHierarchy("admin")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "mata_pelajaran", "Mata pelajaran berhasil dihapus.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Get("/export", a.exportMapel)
+	r.With(a.authorizeHierarchy("wali_kelas")).Post("/import", a.importMapel)
+	r.With(a.authorizeHierarchy("guru")).Get("/template", a.downloadMapelTemplate)
+	r.With(a.authorizeHierarchy("guru")).Get("/tujuan-pembelajaran", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleList(w, r, "tujuan_pembelajaran", map[string]string{"mataPelajaranId": "mata_pelajaran_id", "fase": "fase"})
+	})
+	r.With(a.authorizeHierarchy("guru")).Post("/tujuan-pembelajaran", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleCreate(w, r, "tujuan_pembelajaran", "Tujuan pembelajaran berhasil ditambahkan.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Put("/tujuan-pembelajaran/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpdate(w, r, "tujuan_pembelajaran", "Tujuan pembelajaran berhasil diperbarui.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Delete("/tujuan-pembelajaran/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "tujuan_pembelajaran", "Tujuan pembelajaran berhasil dihapus.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Get("/lingkup-materi", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleList(w, r, "lingkup_materi", map[string]string{"mataPelajaranId": "mata_pelajaran_id"})
+	})
+	r.With(a.authorizeHierarchy("guru")).Post("/lingkup-materi", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleCreate(w, r, "lingkup_materi", "Lingkup materi berhasil ditambahkan.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Put("/lingkup-materi/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpdate(w, r, "lingkup_materi", "Lingkup materi berhasil diperbarui.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Delete("/lingkup-materi/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "lingkup_materi", "Lingkup materi berhasil dihapus.")
+	})
+	return r
+}
+
+func (a *App) listMapel(w http.ResponseWriter, r *http.Request) {
+	kelompok := strings.TrimSpace(r.URL.Query().Get("kelompok"))
+	rows, err := a.many(r.Context(), `
+    SELECT m.id,
+      COALESCE(NULLIF(m.kode_mapel,''), m.kode) AS kode,
+      COALESCE(NULLIF(m.kode_mapel,''), m.kode) AS "kodeMapel",
+      COALESCE(NULLIF(m.nama_mapel,''), m.nama) AS nama,
+      COALESCE(NULLIF(m.nama_mapel,''), m.nama) AS "namaMapel",
+      m.kelompok, m.jp_per_minggu AS "jpPerMinggu", m.guru_id AS "guruId",
+      COALESCE(u.nama, m.guru) AS guru, m.keterangan, m.created_at AS "createdAt", m.updated_at AS "updatedAt"
+    FROM mata_pelajaran m
+    LEFT JOIN users u ON u.id = m.guru_id
+    ORDER BY COALESCE(NULLIF(m.kode_mapel,''), m.kode), COALESCE(NULLIF(m.nama_mapel,''), m.nama)
+  `)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	filtered := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		if kelompok != "" && toStr(row["kelompok"]) != kelompok {
+			continue
+		}
+		filtered = append(filtered, row)
+	}
+	respond(w, 200, map[string]any{"success": true, "data": filtered})
+}
+
+func (a *App) getMapel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	row, err := a.one(r.Context(), `
+    SELECT m.id, COALESCE(NULLIF(m.kode_mapel,''), m.kode) AS kode, COALESCE(NULLIF(m.kode_mapel,''), m.kode) AS "kodeMapel",
+      COALESCE(NULLIF(m.nama_mapel,''), m.nama) AS nama, COALESCE(NULLIF(m.nama_mapel,''), m.nama) AS "namaMapel",
+      m.kelompok, m.jp_per_minggu AS "jpPerMinggu", m.guru_id AS "guruId", COALESCE(u.nama, m.guru) AS guru, m.keterangan
+    FROM mata_pelajaran m LEFT JOIN users u ON u.id = m.guru_id WHERE m.id=$1
+  `, id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	if row == nil {
+		respond(w, 404, map[string]any{"success": false, "message": "Mata pelajaran tidak ditemukan."})
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "data": row})
+}
+
+func (a *App) saveMapel(w http.ResponseWriter, r *http.Request, id string) {
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	nama := pickFirst(body, "namaMapel", "nama_mapel", "nama")
+	if nama == "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Nama mata pelajaran wajib diisi."})
+		return
+	}
+	kode := pickFirst(body, "kodeMapel", "kode_mapel", "kode")
+	guruRef := pickFirst(body, "guruId", "guru_id", "guru")
+	guruID, guruNama, err := a.resolveUserRef(r.Context(), guruRef)
+	if err != nil && guruRef != "" {
+		respond(w, 400, map[string]any{"success": false, "message": "Guru tidak ditemukan."})
+		return
+	}
+	args := []any{nullIfEmpty(kode), nullIfEmpty(kode), nama, nama, coalesceVal(pickFirst(body, "kelompok"), "A"), nullIfEmpty(pickFirst(body, "jpPerMinggu", "jp_per_minggu")), nullIfEmpty(guruID), nullIfEmpty(guruNama), nullIfEmpty(pickFirst(body, "keterangan"))}
+	if id == "" {
+		row, err := a.one(r.Context(), `
+      INSERT INTO mata_pelajaran (kode, kode_mapel, nama, nama_mapel, kelompok, jp_per_minggu, guru_id, guru, keterangan)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      RETURNING id
+    `, args...)
+		if err != nil {
+			serverErr(w, err)
+			return
+		}
+		respond(w, 201, map[string]any{"success": true, "message": "Mata pelajaran berhasil ditambahkan.", "data": row})
+		return
+	}
+	args = append(args, id)
+	_, err = a.db.Exec(r.Context(), "UPDATE mata_pelajaran SET kode=$1, kode_mapel=$2, nama=$3, nama_mapel=$4, kelompok=$5, jp_per_minggu=$6, guru_id=$7, guru=$8, keterangan=$9, updated_at=NOW() WHERE id=$10", args...)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": "Mata pelajaran berhasil diperbarui."})
+}
+
+func (a *App) createMapel(w http.ResponseWriter, r *http.Request) { a.saveMapel(w, r, "") }
+func (a *App) updateMapel(w http.ResponseWriter, r *http.Request) {
+	a.saveMapel(w, r, chi.URLParam(r, "id"))
 }
 
 func (a *App) ekstraRoutes() chi.Router {
-  r := chi.NewRouter()
-  r.With(a.authorizeHierarchy("guru")).Get("/", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "ekstrakurikuler", map[string]string{"jenis": "jenis"}) })
-  r.With(a.authorizeHierarchy("guru")).Get("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleGetByID(w, r, "ekstrakurikuler", "Ekstrakurikuler tidak ditemukan.") })
-  r.With(a.authorizeHierarchy("admin")).Post("/", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("admin")).Put("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("admin")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("guru")).Get("/export", a.exportEkstra)
-  r.With(a.authorizeHierarchy("admin")).Post("/import", a.importEkstra)
-  r.With(a.authorizeHierarchy("guru")).Get("/template", a.downloadEkstraTemplate)
-  r.With(a.authorizeHierarchy("guru")).Get("/penilaian/nilai", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "penilaian_ekstrakurikuler", map[string]string{"siswaId": "siswa_id", "ekstrakurikulerId": "ekstrakurikuler_id", "semester": "semester", "tahunAjaran": "tahun_ajaran"}) })
-  r.With(a.authorizeHierarchy("guru")).Post("/penilaian/nilai", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "penilaian_ekstrakurikuler", "Penilaian ekstrakurikuler berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("guru")).Put("/penilaian/nilai/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "penilaian_ekstrakurikuler", "Penilaian berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("guru")).Delete("/penilaian/nilai/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "penilaian_ekstrakurikuler", "Penilaian berhasil dihapus.") })
-  return r
+	r := chi.NewRouter()
+	r.With(a.authorizeHierarchy("guru")).Get("/", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleList(w, r, "ekstrakurikuler", map[string]string{"jenis": "jenis"})
+	})
+	r.With(a.authorizeHierarchy("guru")).Get("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleGetByID(w, r, "ekstrakurikuler", "Ekstrakurikuler tidak ditemukan.")
+	})
+	r.With(a.authorizeHierarchy("admin")).Post("/", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleCreate(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil ditambahkan.")
+	})
+	r.With(a.authorizeHierarchy("admin")).Put("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpdate(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil diperbarui.")
+	})
+	r.With(a.authorizeHierarchy("admin")).Delete("/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "ekstrakurikuler", "Ekstrakurikuler berhasil dihapus.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Get("/export", a.exportEkstra)
+	r.With(a.authorizeHierarchy("admin")).Post("/import", a.importEkstra)
+	r.With(a.authorizeHierarchy("guru")).Get("/template", a.downloadEkstraTemplate)
+	r.With(a.authorizeHierarchy("guru")).Get("/penilaian/nilai", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleList(w, r, "penilaian_ekstrakurikuler", map[string]string{"siswaId": "siswa_id", "ekstrakurikulerId": "ekstrakurikuler_id", "semester": "semester", "tahunAjaran": "tahun_ajaran"})
+	})
+	r.With(a.authorizeHierarchy("guru")).Post("/penilaian/nilai", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleCreate(w, r, "penilaian_ekstrakurikuler", "Penilaian ekstrakurikuler berhasil ditambahkan.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Put("/penilaian/nilai/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpdate(w, r, "penilaian_ekstrakurikuler", "Penilaian berhasil diperbarui.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Delete("/penilaian/nilai/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "penilaian_ekstrakurikuler", "Penilaian berhasil dihapus.")
+	})
+	return r
 }
 
 func (a *App) penilaianRoutes() chi.Router {
-  r := chi.NewRouter()
-  r.With(a.authorizeHierarchy("guru")).Get("/formatif", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "asesmen_formatif", map[string]string{"mataPelajaranId": "mata_pelajaran_id", "siswaId": "siswa_id"}) })
-  r.With(a.authorizeHierarchy("guru")).Post("/formatif", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "asesmen_formatif", "Asesmen formatif berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("guru")).Put("/formatif/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "asesmen_formatif", "Asesmen formatif berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("guru")).Delete("/formatif/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "asesmen_formatif", "Asesmen formatif berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("guru")).Get("/sumatif", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "asesmen_sumatif", map[string]string{"mataPelajaranId": "mata_pelajaran_id", "siswaId": "siswa_id", "jenis": "jenis"}) })
-  r.With(a.authorizeHierarchy("guru")).Post("/sumatif", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "asesmen_sumatif", "Asesmen sumatif berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("guru")).Put("/sumatif/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "asesmen_sumatif", "Asesmen sumatif berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("guru")).Delete("/sumatif/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "asesmen_sumatif", "Asesmen sumatif berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("guru")).Get("/nilai-akhir", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "nilai_akhir", map[string]string{"siswaId": "siswa_id", "mataPelajaranId": "mata_pelajaran_id", "semester": "semester", "tahunAjaran": "tahun_ajaran"}) })
-  r.With(a.authorizeHierarchy("guru")).Post("/nilai-akhir/calculate", a.calculateNilaiAkhir)
-  r.With(a.authorizeHierarchy("guru")).Put("/nilai-akhir/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "nilai_akhir", "Nilai akhir berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("admin")).Delete("/nilai-akhir/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "nilai_akhir", "Nilai akhir berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("admin")).Get("/mutasi", func(w http.ResponseWriter, r *http.Request) { a.simpleList(w, r, "mutasi", map[string]string{"jenis": "jenis", "siswaId": "siswa_id"}) })
-  r.With(a.authorizeHierarchy("admin")).Post("/mutasi", func(w http.ResponseWriter, r *http.Request) { a.simpleCreate(w, r, "mutasi", "Mutasi berhasil ditambahkan.") })
-  r.With(a.authorizeHierarchy("admin")).Put("/mutasi/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleUpdate(w, r, "mutasi", "Mutasi berhasil diperbarui.") })
-  r.With(a.authorizeHierarchy("admin")).Delete("/mutasi/{id}", func(w http.ResponseWriter, r *http.Request) { a.simpleDelete(w, r, "mutasi", "Mutasi berhasil dihapus.") })
-  r.With(a.authorizeHierarchy("admin")).Get("/mutasi/export", a.exportMutasi)
-  r.With(a.authorizeHierarchy("admin")).Post("/mutasi/import", a.importMutasi)
-  r.With(a.authorizeHierarchy("admin")).Get("/mutasi/template", a.downloadMutasiTemplate)
-  return r
+	r := chi.NewRouter()
+	r.With(a.authorizeHierarchy("guru")).Get("/formatif", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleList(w, r, "asesmen_formatif", map[string]string{"mataPelajaranId": "mata_pelajaran_id", "siswaId": "siswa_id"})
+	})
+	r.With(a.authorizeHierarchy("guru")).Post("/formatif", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleCreate(w, r, "asesmen_formatif", "Asesmen formatif berhasil ditambahkan.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Put("/formatif/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpdate(w, r, "asesmen_formatif", "Asesmen formatif berhasil diperbarui.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Delete("/formatif/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "asesmen_formatif", "Asesmen formatif berhasil dihapus.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Get("/sumatif", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleList(w, r, "asesmen_sumatif", map[string]string{"mataPelajaranId": "mata_pelajaran_id", "siswaId": "siswa_id", "jenis": "jenis"})
+	})
+	r.With(a.authorizeHierarchy("guru")).Post("/sumatif", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleCreate(w, r, "asesmen_sumatif", "Asesmen sumatif berhasil ditambahkan.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Put("/sumatif/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpdate(w, r, "asesmen_sumatif", "Asesmen sumatif berhasil diperbarui.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Delete("/sumatif/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "asesmen_sumatif", "Asesmen sumatif berhasil dihapus.")
+	})
+	r.With(a.authorizeHierarchy("guru")).Get("/nilai-akhir", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleList(w, r, "nilai_akhir", map[string]string{"siswaId": "siswa_id", "mataPelajaranId": "mata_pelajaran_id", "semester": "semester", "tahunAjaran": "tahun_ajaran"})
+	})
+	r.With(a.authorizeHierarchy("guru")).Post("/nilai-akhir/calculate", a.calculateNilaiAkhir)
+	r.With(a.authorizeHierarchy("guru")).Put("/nilai-akhir/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpdate(w, r, "nilai_akhir", "Nilai akhir berhasil diperbarui.")
+	})
+	r.With(a.authorizeHierarchy("admin")).Delete("/nilai-akhir/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "nilai_akhir", "Nilai akhir berhasil dihapus.")
+	})
+	r.With(a.authorizeHierarchy("admin")).Get("/mutasi", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleList(w, r, "mutasi", map[string]string{"jenis": "jenis", "siswaId": "siswa_id"})
+	})
+	r.With(a.authorizeHierarchy("admin")).Post("/mutasi", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleCreate(w, r, "mutasi", "Mutasi berhasil ditambahkan.")
+	})
+	r.With(a.authorizeHierarchy("admin")).Put("/mutasi/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleUpdate(w, r, "mutasi", "Mutasi berhasil diperbarui.")
+	})
+	r.With(a.authorizeHierarchy("admin")).Delete("/mutasi/{id}", func(w http.ResponseWriter, r *http.Request) {
+		a.simpleDelete(w, r, "mutasi", "Mutasi berhasil dihapus.")
+	})
+	r.With(a.authorizeHierarchy("admin")).Get("/mutasi/export", a.exportMutasi)
+	r.With(a.authorizeHierarchy("admin")).Post("/mutasi/import", a.importMutasi)
+	r.With(a.authorizeHierarchy("admin")).Get("/mutasi/template", a.downloadMutasiTemplate)
+	return r
 }
 func (a *App) calculateNilaiAkhir(w http.ResponseWriter, r *http.Request) {
-  body, _ := readBody(r)
-  semester := toStr(body["semester"])
-  if semester == "" { semester = "1" }
-  tahunAjaran := toStr(body["tahunAjaran"])
-  if tahunAjaran == "" {
-    y := time.Now().Year()
-    tahunAjaran = fmt.Sprintf("%d/%d", y, y+1)
-  }
-  if _, err := a.db.Exec(r.Context(), "DELETE FROM nilai_akhir WHERE semester=$1 AND tahun_ajaran=$2", semester, tahunAjaran); err != nil {
-    serverErr(w, err)
-    return
-  }
-  students, err := a.many(r.Context(), "SELECT id,nama,nisn FROM data_siswa")
-  if err != nil { serverErr(w, err); return }
-  subjects, err := a.many(r.Context(), "SELECT id,nama FROM mata_pelajaran")
-  if err != nil { serverErr(w, err); return }
+	body, _ := readBody(r)
+	semester := toStr(body["semester"])
+	if semester == "" {
+		semester = "1"
+	}
+	tahunAjaran := toStr(body["tahunAjaran"])
+	if tahunAjaran == "" {
+		y := time.Now().Year()
+		tahunAjaran = fmt.Sprintf("%d/%d", y, y+1)
+	}
+	if _, err := a.db.Exec(r.Context(), "DELETE FROM nilai_akhir WHERE semester=$1 AND tahun_ajaran=$2", semester, tahunAjaran); err != nil {
+		serverErr(w, err)
+		return
+	}
+	students, err := a.many(r.Context(), "SELECT id,nama,nisn FROM data_siswa")
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	subjects, err := a.many(r.Context(), "SELECT id,nama FROM mata_pelajaran")
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  results := make([]map[string]any, 0)
-  for _, s := range students {
-    for _, m := range subjects {
-      var f, su float64
-      _ = a.db.QueryRow(r.Context(), "SELECT COALESCE(AVG(nilai::numeric),0) FROM asesmen_formatif WHERE mata_pelajaran_id=$1 AND siswa_id=$2", s["id"], m["id"]).Scan(&f)
-      _ = a.db.QueryRow(r.Context(), "SELECT COALESCE(AVG(nilai::numeric),0) FROM asesmen_sumatif WHERE mata_pelajaran_id=$1 AND siswa_id=$2", s["id"], m["id"]).Scan(&su)
-      final := int(math.Round((f * 0.3) + (su * 0.7)))
-      if final <= 0 { continue }
-      pred, desk := predikat(final)
-      row := map[string]any{"mataPelajaranId": s2n(m["id"]), "mataPelajaran": m["nama"], "siswaId": s2n(s["id"]), "siswa": s["nama"], "nisn": s["nisn"], "nilaiFormatif": strconv.Itoa(int(math.Round(f))), "nilaiSumatif": strconv.Itoa(int(math.Round(su))), "nilaiAkhir": strconv.Itoa(final), "predikat": pred, "deskripsi": desk, "tahunAjaran": tahunAjaran, "semester": semester}
-      results = append(results, row)
-      _, _ = a.db.Exec(r.Context(), "INSERT INTO nilai_akhir (mata_pelajaran_id,mata_pelajaran,siswa_id,siswa,nisn,nilai_formatif,nilai_sumatif,nilai_akhir,predikat,deskripsi,tahun_ajaran,semester) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", row["mataPelajaranId"], row["mataPelajaran"], row["siswaId"], row["siswa"], row["nisn"], row["nilaiFormatif"], row["nilaiSumatif"], row["nilaiAkhir"], row["predikat"], row["deskripsi"], row["tahunAjaran"], row["semester"])
-    }
-  }
+	results := make([]map[string]any, 0)
+	for _, s := range students {
+		for _, m := range subjects {
+			var f, su float64
+			_ = a.db.QueryRow(r.Context(), "SELECT COALESCE(AVG(nilai::numeric),0) FROM asesmen_formatif WHERE mata_pelajaran_id=$1 AND siswa_id=$2", s["id"], m["id"]).Scan(&f)
+			_ = a.db.QueryRow(r.Context(), "SELECT COALESCE(AVG(nilai::numeric),0) FROM asesmen_sumatif WHERE mata_pelajaran_id=$1 AND siswa_id=$2", s["id"], m["id"]).Scan(&su)
+			final := int(math.Round((f * 0.3) + (su * 0.7)))
+			if final <= 0 {
+				continue
+			}
+			pred, desk := predikat(final)
+			row := map[string]any{"mataPelajaranId": s2n(m["id"]), "mataPelajaran": m["nama"], "siswaId": s2n(s["id"]), "siswa": s["nama"], "nisn": s["nisn"], "nilaiFormatif": strconv.Itoa(int(math.Round(f))), "nilaiSumatif": strconv.Itoa(int(math.Round(su))), "nilaiAkhir": strconv.Itoa(final), "predikat": pred, "deskripsi": desk, "tahunAjaran": tahunAjaran, "semester": semester}
+			results = append(results, row)
+			_, _ = a.db.Exec(r.Context(), "INSERT INTO nilai_akhir (mata_pelajaran_id,mata_pelajaran,siswa_id,siswa,nisn,nilai_formatif,nilai_sumatif,nilai_akhir,predikat,deskripsi,tahun_ajaran,semester) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", row["mataPelajaranId"], row["mataPelajaran"], row["siswaId"], row["siswa"], row["nisn"], row["nilaiFormatif"], row["nilaiSumatif"], row["nilaiAkhir"], row["predikat"], row["deskripsi"], row["tahunAjaran"], row["semester"])
+		}
+	}
 
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil menghitung %d nilai akhir.", len(results)), "data": map[string]any{"count": len(results), "nilai": results}})
+	respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil menghitung %d nilai akhir.", len(results)), "data": map[string]any{"count": len(results), "nilai": results}})
 }
 
 func (a *App) bulkSiswa(w http.ResponseWriter, r *http.Request) {
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  items, ok := body["students"].([]any)
-  if !ok || len(items) == 0 { respond(w, 400, map[string]any{"success": false, "message": "Data siswa harus berupa array dan tidak boleh kosong."}); return }
-  inserted := 0
-  errs := []map[string]any{}
-  for _, raw := range items {
-    m, ok := raw.(map[string]any)
-    if !ok { continue }
-    nisn := toStr(m["nisn"])
-    if nisn == "" { errs = append(errs, map[string]any{"error": "NISN kosong"}); continue }
-    ex, _ := a.one(r.Context(), "SELECT id FROM data_siswa WHERE nisn=$1", nisn)
-    if ex != nil { errs = append(errs, map[string]any{"nisn": nisn, "nama": m["nama"], "error": "NISN sudah terdaftar"}); continue }
-    _, err := a.db.Exec(r.Context(), "INSERT INTO data_siswa (nis,nisn,nama,tempat_lahir,tanggal_lahir,jenis_kelamin,agama,alamat,nama_ortu,telepon_ortu,tanggal_masuk,kelas,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)", nullIfEmpty(m["nis"]), nisn, toStr(m["nama"]), nullIfEmpty(m["tempatLahir"]), nullIfEmpty(m["tanggalLahir"]), coalesceVal(toStr(m["jenisKelamin"]), "L"), nullIfEmpty(m["agama"]), nullIfEmpty(m["alamat"]), toStr(m["namaOrtu"]), nullIfEmpty(m["teleponOrtu"]), nullIfEmpty(m["tanggalMasuk"]), nullIfEmpty(m["kelas"]), coalesceVal(toStr(m["status"]), "Aktif"))
-    if err != nil { errs = append(errs, map[string]any{"nisn": nisn, "nama": m["nama"], "error": err.Error()}); continue }
-    inserted++
-  }
-  data := map[string]any{"inserted": inserted}
-  if len(errs) > 0 { data["errors"] = errs }
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil mengimport %d siswa.", inserted), "data": data})
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	items, ok := body["students"].([]any)
+	if !ok || len(items) == 0 {
+		respond(w, 400, map[string]any{"success": false, "message": "Data siswa harus berupa array dan tidak boleh kosong."})
+		return
+	}
+	inserted := 0
+	errs := []map[string]any{}
+	for _, raw := range items {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		nisn := toStr(m["nisn"])
+		if nisn == "" {
+			errs = append(errs, map[string]any{"error": "NISN kosong"})
+			continue
+		}
+		ex, _ := a.one(r.Context(), "SELECT id FROM data_siswa WHERE nisn=$1", nisn)
+		if ex != nil {
+			errs = append(errs, map[string]any{"nisn": nisn, "nama": m["nama"], "error": "NISN sudah terdaftar"})
+			continue
+		}
+		kelasID, kelasNama, err := a.resolveKelasRef(r.Context(), pickFirst(m, "kelasId", "kelas_id", "kelas"))
+		if err != nil && pickFirst(m, "kelasId", "kelas_id", "kelas") != "" {
+			errs = append(errs, map[string]any{"nisn": nisn, "nama": m["nama"], "error": "kelas tidak ditemukan"})
+			continue
+		}
+		_, err = a.db.Exec(r.Context(), "INSERT INTO data_siswa (nis,nisn,nama,nama_lengkap,tempat_lahir,tanggal_lahir,jenis_kelamin,agama,alamat,nama_ortu,nama_orang_tua,telepon_ortu,telepon_orang_tua,tanggal_masuk,kelas_id,kelas,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)", nullIfEmpty(m["nis"]), nisn, toStr(m["nama"]), toStr(m["nama"]), nullIfEmpty(m["tempatLahir"]), nullIfEmpty(m["tanggalLahir"]), coalesceVal(toStr(m["jenisKelamin"]), "L"), nullIfEmpty(m["agama"]), nullIfEmpty(m["alamat"]), nullIfEmpty(m["namaOrtu"]), nullIfEmpty(m["namaOrtu"]), nullIfEmpty(m["teleponOrtu"]), nullIfEmpty(m["teleponOrtu"]), nullIfEmpty(m["tanggalMasuk"]), nullIfEmpty(kelasID), nullIfEmpty(kelasNama), coalesceVal(toStr(m["status"]), "Aktif"))
+		if err != nil {
+			errs = append(errs, map[string]any{"nisn": nisn, "nama": m["nama"], "error": err.Error()})
+			continue
+		}
+		inserted++
+	}
+	data := map[string]any{"inserted": inserted}
+	if len(errs) > 0 {
+		data["errors"] = errs
+	}
+	respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil mengimport %d siswa.", inserted), "data": data})
 }
 
 func (a *App) simpleLatest(w http.ResponseWriter, r *http.Request, table string) {
-  row, err := a.one(r.Context(), fmt.Sprintf("SELECT * FROM %s ORDER BY created_at DESC LIMIT 1", table))
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "data": row})
+	row, err := a.one(r.Context(), fmt.Sprintf("SELECT * FROM %s ORDER BY created_at DESC LIMIT 1", table))
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "data": row})
 }
 
 func (a *App) simpleUpsertSingle(w http.ResponseWriter, r *http.Request, table, msg string) {
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  existing, err := a.one(r.Context(), fmt.Sprintf("SELECT id FROM %s LIMIT 1", table))
-  if err != nil { serverErr(w, err); return }
-  if existing == nil {
-    row, err := a.insertFromMap(r.Context(), table, body)
-    if err != nil { serverErr(w, err); return }
-    respond(w, 200, map[string]any{"success": true, "message": msg, "data": row})
-    return
-  }
-  row, err := a.updateFromMap(r.Context(), table, toStr(existing["id"]), body)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "message": msg, "data": row})
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	existing, err := a.one(r.Context(), fmt.Sprintf("SELECT id FROM %s LIMIT 1", table))
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	if existing == nil {
+		row, err := a.insertFromMap(r.Context(), table, body)
+		if err != nil {
+			serverErr(w, err)
+			return
+		}
+		respond(w, 200, map[string]any{"success": true, "message": msg, "data": row})
+		return
+	}
+	row, err := a.updateFromMap(r.Context(), table, toStr(existing["id"]), body)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": msg, "data": row})
 }
 
 func (a *App) simpleList(w http.ResponseWriter, r *http.Request, table string, filters map[string]string) {
-  cond := []string{}
-  args := []any{}
-  idx := 1
-  for q, col := range filters {
-    v := strings.TrimSpace(r.URL.Query().Get(q))
-    if v == "" { continue }
-    cond = append(cond, fmt.Sprintf("%s = $%d", col, idx))
-    args = append(args, v)
-    idx++
-  }
-  sql := fmt.Sprintf("SELECT * FROM %s", table)
-  if len(cond) > 0 { sql += " WHERE " + strings.Join(cond, " AND ") }
-  sql += " ORDER BY created_at DESC"
-  rows, err := a.many(r.Context(), sql, args...)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "data": rows})
+	cond := []string{}
+	args := []any{}
+	idx := 1
+	for q, col := range filters {
+		v := strings.TrimSpace(r.URL.Query().Get(q))
+		if v == "" {
+			continue
+		}
+		cond = append(cond, fmt.Sprintf("%s = $%d", col, idx))
+		args = append(args, v)
+		idx++
+	}
+	sql := fmt.Sprintf("SELECT * FROM %s", table)
+	if len(cond) > 0 {
+		sql += " WHERE " + strings.Join(cond, " AND ")
+	}
+	sql += " ORDER BY created_at DESC"
+	rows, err := a.many(r.Context(), sql, args...)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "data": rows})
 }
 
 func (a *App) simpleGetByID(w http.ResponseWriter, r *http.Request, table, notFoundMsg string) {
-  id := chi.URLParam(r, "id")
-  row, err := a.one(r.Context(), fmt.Sprintf("SELECT * FROM %s WHERE id=$1", table), id)
-  if err != nil { serverErr(w, err); return }
-  if row == nil { respond(w, 404, map[string]any{"success": false, "message": notFoundMsg}); return }
-  respond(w, 200, map[string]any{"success": true, "data": row})
+	id := chi.URLParam(r, "id")
+	row, err := a.one(r.Context(), fmt.Sprintf("SELECT * FROM %s WHERE id=$1", table), id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	if row == nil {
+		respond(w, 404, map[string]any{"success": false, "message": notFoundMsg})
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "data": row})
 }
 
 func (a *App) simpleCreate(w http.ResponseWriter, r *http.Request, table, message string) {
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  row, err := a.insertFromMap(r.Context(), table, body)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 201, map[string]any{"success": true, "message": message, "data": row})
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	row, err := a.insertFromMap(r.Context(), table, body)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 201, map[string]any{"success": true, "message": message, "data": row})
 }
 
 func (a *App) simpleUpdate(w http.ResponseWriter, r *http.Request, table, message string) {
-  id := chi.URLParam(r, "id")
-  body, err := readBody(r)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"}); return }
-  _, err = a.one(r.Context(), fmt.Sprintf("SELECT id FROM %s WHERE id=$1", table), id)
-  if err != nil { serverErr(w, err); return }
-  _, err = a.updateFromMap(r.Context(), table, id, body)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "message": message})
+	id := chi.URLParam(r, "id")
+	body, err := readBody(r)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid payload"})
+		return
+	}
+	_, err = a.one(r.Context(), fmt.Sprintf("SELECT id FROM %s WHERE id=$1", table), id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	_, err = a.updateFromMap(r.Context(), table, id, body)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": message})
 }
 
 func (a *App) simpleDelete(w http.ResponseWriter, r *http.Request, table, message string) {
-  id := chi.URLParam(r, "id")
-  _, err := a.db.Exec(r.Context(), fmt.Sprintf("DELETE FROM %s WHERE id=$1", table), id)
-  if err != nil { serverErr(w, err); return }
-  respond(w, 200, map[string]any{"success": true, "message": message})
+	id := chi.URLParam(r, "id")
+	_, err := a.db.Exec(r.Context(), fmt.Sprintf("DELETE FROM %s WHERE id=$1", table), id)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
+	respond(w, 200, map[string]any{"success": true, "message": message})
 }
 
 func (a *App) insertFromMap(ctx context.Context, table string, body map[string]any) (map[string]any, error) {
-  cols := []string{}
-  vals := []any{}
-  ph := []string{}
-  i := 1
-  for k, v := range body {
-    col := camelToSnake(k)
-    if col == "id" || col == "created_at" || col == "updated_at" { continue }
-    cols = append(cols, col)
-    vals = append(vals, emptyToNil(v))
-    ph = append(ph, fmt.Sprintf("$%d", i))
-    i++
-  }
-  if len(cols) == 0 {
-    return nil, errors.New("no fields to insert")
-  }
-  sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING *", table, strings.Join(cols, ","), strings.Join(ph, ","))
-  return a.one(ctx, sql, vals...)
+	cols := []string{}
+	vals := []any{}
+	ph := []string{}
+	i := 1
+	for k, v := range body {
+		col := camelToSnake(k)
+		if col == "id" || col == "created_at" || col == "updated_at" {
+			continue
+		}
+		cols = append(cols, col)
+		vals = append(vals, emptyToNil(v))
+		ph = append(ph, fmt.Sprintf("$%d", i))
+		i++
+	}
+	if len(cols) == 0 {
+		return nil, errors.New("no fields to insert")
+	}
+	sql := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) RETURNING *", table, strings.Join(cols, ","), strings.Join(ph, ","))
+	return a.one(ctx, sql, vals...)
 }
 
 func (a *App) updateFromMap(ctx context.Context, table, id string, body map[string]any) (map[string]any, error) {
-  sets := []string{}
-  vals := []any{}
-  i := 1
-  for k, v := range body {
-    col := camelToSnake(k)
-    if col == "id" || col == "created_at" || col == "updated_at" { continue }
-    sets = append(sets, fmt.Sprintf("%s = COALESCE(NULLIF($%d::text,''), %s::text)", col, i, col))
-    vals = append(vals, toStr(v))
-    i++
-  }
-  sets = append(sets, "updated_at = NOW()")
-  vals = append(vals, id)
-  sql := fmt.Sprintf("UPDATE %s SET %s WHERE id=$%d RETURNING *", table, strings.Join(sets, ","), i)
-  return a.one(ctx, sql, vals...)
+	sets := []string{}
+	vals := []any{}
+	i := 1
+	for k, v := range body {
+		col := camelToSnake(k)
+		if col == "id" || col == "created_at" || col == "updated_at" {
+			continue
+		}
+		sets = append(sets, fmt.Sprintf("%s = COALESCE(NULLIF($%d::text,''), %s::text)", col, i, col))
+		vals = append(vals, toStr(v))
+		i++
+	}
+	sets = append(sets, "updated_at = NOW()")
+	vals = append(vals, id)
+	sql := fmt.Sprintf("UPDATE %s SET %s WHERE id=$%d RETURNING *", table, strings.Join(sets, ","), i)
+	return a.one(ctx, sql, vals...)
 }
 
 func (a *App) many(ctx context.Context, q string, args ...any) ([]map[string]any, error) {
-  wrap := fmt.Sprintf("SELECT COALESCE(json_agg(t), '[]'::json)::text FROM (%s) t", q)
-  var raw string
-  if err := a.db.QueryRow(ctx, wrap, args...).Scan(&raw); err != nil { return nil, err }
-  out := []map[string]any{}
-  if err := json.Unmarshal([]byte(raw), &out); err != nil { return nil, err }
-  return out, nil
+	wrap := fmt.Sprintf("SELECT COALESCE(json_agg(t), '[]'::json)::text FROM (%s) t", q)
+	var raw string
+	if err := a.db.QueryRow(ctx, wrap, args...).Scan(&raw); err != nil {
+		return nil, err
+	}
+	out := []map[string]any{}
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (a *App) one(ctx context.Context, q string, args ...any) (map[string]any, error) {
-  rows, err := a.db.Query(ctx, q, args...)
-  if err != nil { return nil, err }
-  defer rows.Close()
+	rows, err := a.db.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-  if !rows.Next() {
-    return nil, rows.Err()
-  }
+	if !rows.Next() {
+		return nil, rows.Err()
+	}
 
-  values, err := rows.Values()
-  if err != nil { return nil, err }
+	values, err := rows.Values()
+	if err != nil {
+		return nil, err
+	}
 
-  fields := rows.FieldDescriptions()
-  out := make(map[string]any, len(fields))
-  for i, field := range fields {
-    out[string(field.Name)] = normalizeDBValue(values[i])
-  }
-  return out, rows.Err()
+	fields := rows.FieldDescriptions()
+	out := make(map[string]any, len(fields))
+	for i, field := range fields {
+		out[string(field.Name)] = normalizeDBValue(values[i])
+	}
+	return out, rows.Err()
 }
 
 func readBody(r *http.Request) (map[string]any, error) {
-  defer r.Body.Close()
-  out := map[string]any{}
-  dec := json.NewDecoder(r.Body)
-  if err := dec.Decode(&out); err != nil {
-    if strings.Contains(err.Error(), "EOF") { return out, nil }
-    return nil, err
-  }
-  return out, nil
+	defer r.Body.Close()
+	out := map[string]any{}
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&out); err != nil {
+		if strings.Contains(err.Error(), "EOF") {
+			return out, nil
+		}
+		return nil, err
+	}
+	return out, nil
 }
 
 func respond(w http.ResponseWriter, code int, data any) {
-  w.Header().Set("Content-Type", "application/json")
-  w.WriteHeader(code)
-  _ = json.NewEncoder(w).Encode(data)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 func serverErr(w http.ResponseWriter, err error) {
-  respond(w, 500, map[string]any{"success": false, "message": "Terjadi kesalahan pada server.", "error": err.Error()})
+	respond(w, 500, map[string]any{"success": false, "message": "Terjadi kesalahan pada server.", "error": err.Error()})
 }
 
 func toStr(v any) string {
-	if v == nil { return "" }
+	if v == nil {
+		return ""
+	}
 	switch t := v.(type) {
-	case string: return t
-	case float64: return strconv.FormatFloat(t, 'f', -1, 64)
-	case bool: if t { return "true" }; return "false"
+	case string:
+		return t
+	case float64:
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	case bool:
+		if t {
+			return "true"
+		}
+		return "false"
 	case []any:
 		b, _ := json.Marshal(t)
 		return string(b)
-	default: return fmt.Sprintf("%v", v)
+	default:
+		return fmt.Sprintf("%v", v)
 	}
 }
 
 func normalizeImportHeader(s string) string {
-  s = strings.TrimSpace(strings.ToLower(s))
-  replacer := strings.NewReplacer("_", " ", "\n", " ", "\r", " ", "\t", " ", ":", " ")
-  s = replacer.Replace(s)
-  return strings.Join(strings.Fields(s), " ")
+	s = strings.TrimSpace(strings.ToLower(s))
+	replacer := strings.NewReplacer("_", " ", "\n", " ", "\r", " ", "\t", " ", ":", " ")
+	s = replacer.Replace(s)
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func findHeaderRow(rows [][]string, requiredGroups ...[]string) int {
-  limit := len(rows)
-  if limit > 20 {
-    limit = 20
-  }
+	limit := len(rows)
+	if limit > 20 {
+		limit = 20
+	}
 
-  for i := 0; i < limit; i++ {
-    normalized := make([]string, 0, len(rows[i]))
-    for _, cell := range rows[i] {
-      normalized = append(normalized, normalizeImportHeader(cell))
-    }
+	for i := 0; i < limit; i++ {
+		normalized := make([]string, 0, len(rows[i]))
+		for _, cell := range rows[i] {
+			normalized = append(normalized, normalizeImportHeader(cell))
+		}
 
-    matchedAll := true
-    for _, group := range requiredGroups {
-      matched := false
-      for _, alias := range group {
-        if slices.Contains(normalized, normalizeImportHeader(alias)) {
-          matched = true
-          break
-        }
-      }
-      if !matched {
-        matchedAll = false
-        break
-      }
-    }
+		matchedAll := true
+		for _, group := range requiredGroups {
+			matched := false
+			for _, alias := range group {
+				if slices.Contains(normalized, normalizeImportHeader(alias)) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				matchedAll = false
+				break
+			}
+		}
 
-    if matchedAll {
-      return i
-    }
-  }
+		if matchedAll {
+			return i
+		}
+	}
 
-  return -1
+	return -1
 }
 
 func buildHeaderIndex(headers []string, aliases map[string][]string) map[string]int {
-  indexByHeader := map[string]int{}
-  for idx, header := range headers {
-    normalized := normalizeImportHeader(header)
-    if normalized != "" {
-      indexByHeader[normalized] = idx
-    }
-  }
+	indexByHeader := map[string]int{}
+	for idx, header := range headers {
+		normalized := normalizeImportHeader(header)
+		if normalized != "" {
+			indexByHeader[normalized] = idx
+		}
+	}
 
-  result := map[string]int{}
-  for field, candidates := range aliases {
-    result[field] = -1
-    for _, alias := range candidates {
-      if idx, ok := indexByHeader[normalizeImportHeader(alias)]; ok {
-        result[field] = idx
-        break
-      }
-    }
-  }
-  return result
+	result := map[string]int{}
+	for field, candidates := range aliases {
+		result[field] = -1
+		for _, alias := range candidates {
+			if idx, ok := indexByHeader[normalizeImportHeader(alias)]; ok {
+				result[field] = idx
+				break
+			}
+		}
+	}
+	return result
 }
 
 func getRowCell(row []string, idx int) string {
-  if idx < 0 || idx >= len(row) {
-    return ""
-  }
-  return strings.TrimSpace(row[idx])
+	if idx < 0 || idx >= len(row) {
+		return ""
+	}
+	return strings.TrimSpace(row[idx])
 }
 
 func parseCSVRecords(content []byte) ([][]string, error) {
-  filtered := make([]string, 0)
-  for _, line := range strings.Split(string(content), "\n") {
-    trimmed := strings.TrimSpace(line)
-    if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-      continue
-    }
-    filtered = append(filtered, line)
-  }
+	filtered := make([]string, 0)
+	for _, line := range strings.Split(string(content), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
 
-  reader := csv.NewReader(strings.NewReader(strings.Join(filtered, "\n")))
-  reader.TrimLeadingSpace = true
-  return reader.ReadAll()
+	reader := csv.NewReader(strings.NewReader(strings.Join(filtered, "\n")))
+	reader.TrimLeadingSpace = true
+	return reader.ReadAll()
 }
 
 func parseJSONArray(content []byte) ([]map[string]any, error) {
-  var direct []map[string]any
-  if err := json.Unmarshal(content, &direct); err == nil {
-    return direct, nil
-  }
+	var direct []map[string]any
+	if err := json.Unmarshal(content, &direct); err == nil {
+		return direct, nil
+	}
 
-  var wrapped struct {
-    Data []map[string]any `json:"data"`
-  }
-  if err := json.Unmarshal(content, &wrapped); err != nil {
-    return nil, err
-  }
-  return wrapped.Data, nil
+	var wrapped struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(content, &wrapped); err != nil {
+		return nil, err
+	}
+	return wrapped.Data, nil
 }
 
 func normalizeDBValue(v any) any {
@@ -1226,759 +1863,905 @@ func normalizeDBValue(v any) any {
 }
 
 func camelToSnake(in string) string {
-  out := strings.Builder{}
-  for i, r := range in {
-    if r >= 'A' && r <= 'Z' {
-      if i > 0 { out.WriteByte('_') }
-      out.WriteRune(r + 32)
-    } else {
-      out.WriteRune(r)
-    }
-  }
-  return out.String()
+	out := strings.Builder{}
+	for i, r := range in {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				out.WriteByte('_')
+			}
+			out.WriteRune(r + 32)
+		} else {
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
 }
 
 func nullIfEmpty(v any) any {
-  s := strings.TrimSpace(toStr(v))
-  if s == "" { return nil }
-  return s
+	s := strings.TrimSpace(toStr(v))
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func emptyToNil(v any) any {
-  if strings.TrimSpace(toStr(v)) == "" { return nil }
-  return v
+	if strings.TrimSpace(toStr(v)) == "" {
+		return nil
+	}
+	return v
 }
 
 func coalesceVal(v, fallback string) string {
-  if strings.TrimSpace(v) == "" { return fallback }
-  return v
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
 }
 
 func s2n(v any) any {
-  return nullIfEmpty(v)
+	return nullIfEmpty(v)
 }
 
 func predikat(n int) (string, string) {
-  if n >= 90 { return "A", "Sangat Baik" }
-  if n >= 80 { return "B", "Baik" }
-  if n >= 70 { return "C", "Cukup" }
-  if n >= 60 { return "D", "Kurang" }
-  return "E", "Sangat Kurang"
+	if n >= 90 {
+		return "A", "Sangat Baik"
+	}
+	if n >= 80 {
+		return "B", "Baik"
+	}
+	if n >= 70 {
+		return "C", "Cukup"
+	}
+	if n >= 60 {
+		return "D", "Kurang"
+	}
+	return "E", "Sangat Kurang"
 }
 
 // Export Mapel functions
 func (a *App) exportMapel(w http.ResponseWriter, r *http.Request) {
-  format := r.URL.Query().Get("format")
-  if format == "" { format = "xlsx" }
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "xlsx"
+	}
 
-  rows, err := a.many(r.Context(), "SELECT id,kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan FROM mata_pelajaran ORDER BY kode")
-  if err != nil { serverErr(w, err); return }
+	rows, err := a.many(r.Context(), `
+    SELECT m.id,
+      COALESCE(NULLIF(m.kode_mapel,''), m.kode) AS kode,
+      COALESCE(NULLIF(m.nama_mapel,''), m.nama) AS nama,
+      m.kelompok,
+      m.jp_per_minggu,
+      COALESCE(u.nama, m.guru) AS guru,
+      m.keterangan
+    FROM mata_pelajaran m
+    LEFT JOIN users u ON u.id = m.guru_id
+    ORDER BY COALESCE(NULLIF(m.kode_mapel,''), m.kode), COALESCE(NULLIF(m.nama_mapel,''), m.nama)
+  `)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  if format == "xlsx" {
-    f := excelize.NewFile()
-    f.SetSheetName("Sheet1", "Mata Pelajaran")
+	if format == "xlsx" {
+		f := excelize.NewFile()
+		f.SetSheetName("Sheet1", "Mata Pelajaran")
 
-    headerStyle, _ := f.NewStyle(&excelize.Style{
-      Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-      Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-      Alignment: &excelize.Alignment{Horizontal: "center"},
-    })
+		headerStyle, _ := f.NewStyle(&excelize.Style{
+			Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+			Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+			Alignment: &excelize.Alignment{Horizontal: "center"},
+		})
 
-    headers := []string{"ID", "Kode", "Nama", "Kelompok", "Fase", "JP Per Minggu", "Guru", "Keterangan"}
-    for i, h := range headers {
-      cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-      f.SetCellValue("Mata Pelajaran", cell, h)
-      f.SetCellStyle("Mata Pelajaran", cell, cell, headerStyle)
-    }
+		headers := []string{"ID", "Kode Mapel", "Nama Mapel", "Kelompok", "JP Per Minggu", "Guru", "Keterangan"}
+		for i, h := range headers {
+			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+			f.SetCellValue("Mata Pelajaran", cell, h)
+			f.SetCellStyle("Mata Pelajaran", cell, cell, headerStyle)
+		}
 
-    for i, row := range rows {
-      rIdx := i + 2
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("B%d", rIdx), toStr(row["kode"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("D%d", rIdx), toStr(row["kelompok"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("E%d", rIdx), toStr(row["fase"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("F%d", rIdx), toStr(row["jp_per_minggu"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("G%d", rIdx), toStr(row["guru"]))
-      f.SetCellValue("Mata Pelajaran", fmt.Sprintf("H%d", rIdx), toStr(row["keterangan"]))
-    }
+		for i, row := range rows {
+			rIdx := i + 2
+			f.SetCellValue("Mata Pelajaran", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+			f.SetCellValue("Mata Pelajaran", fmt.Sprintf("B%d", rIdx), toStr(row["kode"]))
+			f.SetCellValue("Mata Pelajaran", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
+			f.SetCellValue("Mata Pelajaran", fmt.Sprintf("D%d", rIdx), toStr(row["kelompok"]))
+			f.SetCellValue("Mata Pelajaran", fmt.Sprintf("E%d", rIdx), toStr(row["jp_per_minggu"]))
+			f.SetCellValue("Mata Pelajaran", fmt.Sprintf("F%d", rIdx), toStr(row["guru"]))
+			f.SetCellValue("Mata Pelajaran", fmt.Sprintf("G%d", rIdx), toStr(row["keterangan"]))
+		}
 
-    f.SetColWidth("Mata Pelajaran", "A", "A", 36)
-    f.SetColWidth("Mata Pelajaran", "B", "B", 12)
-    f.SetColWidth("Mata Pelajaran", "C", "C", 30)
-    f.SetColWidth("Mata Pelajaran", "H", "H", 40)
+		f.SetColWidth("Mata Pelajaran", "A", "A", 36)
+		f.SetColWidth("Mata Pelajaran", "B", "B", 12)
+		f.SetColWidth("Mata Pelajaran", "C", "C", 30)
+		f.SetColWidth("Mata Pelajaran", "G", "G", 40)
 
-    var buf bytes.Buffer
-    if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+		var buf bytes.Buffer
+		if err := f.Write(&buf); err != nil {
+			serverErr(w, err)
+			return
+		}
 
-    w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mata_pelajaran_export_%s.xlsx", time.Now().Format("2006-01-02")))
-    w.Write(buf.Bytes())
-    return
-  }
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mata_pelajaran_export_%s.xlsx", time.Now().Format("2006-01-02")))
+		w.Write(buf.Bytes())
+		return
+	}
 
-  // Fallback to JSON
-  data := make([]map[string]any, len(rows))
-  for i, row := range rows {
-    data[i] = map[string]any{
-      "id":           toStr(row["id"]),
-      "kode":         toStr(row["kode"]),
-      "nama":         toStr(row["nama"]),
-      "kelompok":     toStr(row["kelompok"]),
-      "fase":         toStr(row["fase"]),
-      "jpPerMinggu":  toStr(row["jp_per_minggu"]),
-      "guru":         toStr(row["guru"]),
-      "keterangan":   toStr(row["keterangan"]),
-    }
-  }
+	// Fallback to JSON
+	data := make([]map[string]any, len(rows))
+	for i, row := range rows {
+		data[i] = map[string]any{
+			"id":          toStr(row["id"]),
+			"kode":        toStr(row["kode"]),
+			"nama":        toStr(row["nama"]),
+			"kelompok":    toStr(row["kelompok"]),
+			"jpPerMinggu": toStr(row["jp_per_minggu"]),
+			"guru":        toStr(row["guru"]),
+			"keterangan":  toStr(row["keterangan"]),
+		}
+	}
 
-  w.Header().Set("Content-Type", "application/json")
-  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mata_pelajaran_export_%s.json", time.Now().Format("2006-01-02")))
-  json.NewEncoder(w).Encode(map[string]any{"success": true, "data": data})
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mata_pelajaran_export_%s.json", time.Now().Format("2006-01-02")))
+	json.NewEncoder(w).Encode(map[string]any{"success": true, "data": data})
 }
 
 func (a *App) downloadMapelTemplate(w http.ResponseWriter, r *http.Request) {
-  format := r.URL.Query().Get("format")
-  if format == "" { format = "xlsx" }
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "xlsx"
+	}
 
-  if format == "xlsx" {
-    // Generate XLSX dynamically
-    f := excelize.NewFile()
-    f.SetSheetName("Sheet1", "Mata Pelajaran")
+	if format == "xlsx" {
+		// Generate XLSX dynamically
+		f := excelize.NewFile()
+		f.SetSheetName("Sheet1", "Mata Pelajaran")
 
-    headerStyle, _ := f.NewStyle(&excelize.Style{
-      Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
-      Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-      Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
-    })
+		headerStyle, _ := f.NewStyle(&excelize.Style{
+			Font:      &excelize.Font{Bold: true, Size: 11, Color: "FFFFFF"},
+			Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+			Alignment: &excelize.Alignment{Horizontal: "center", Vertical: "center"},
+		})
 
-    headers := []string{"ID", "Kode", "Nama", "Kelompok", "Fase", "JP Per Minggu", "Guru", "Keterangan"}
-    for i, h := range headers {
-      cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-      f.SetCellValue("Mata Pelajaran", cell, h)
-      f.SetCellStyle("Mata Pelajaran", cell, cell, headerStyle)
-    }
+		headers := []string{"ID", "Kode Mapel", "Nama Mapel", "Kelompok", "JP Per Minggu", "Guru", "Keterangan"}
+		for i, h := range headers {
+			cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+			f.SetCellValue("Mata Pelajaran", cell, h)
+			f.SetCellStyle("Mata Pelajaran", cell, cell, headerStyle)
+		}
 
-    samples := [][]interface{}{
-      {"", "MAP-001", "Matematika", "A", "Fase D", "6 JP", "Budi Santoso", "Mata pelajaran wajib"},
-      {"", "MAP-002", "Bahasa Indonesia", "A", "Fase D", "4 JP", "Siti Aminah", "Mata pelajaran wajib"},
-      {"", "MAP-003", "Bahasa Inggris", "A", "Fase D", "4 JP", "John Smith", "Mata pelajaran wajib"},
-    }
+		samples := [][]interface{}{
+			{"", "MAP-001", "Matematika", "A", "6", "Budi Santoso", "Mata pelajaran wajib"},
+			{"", "MAP-002", "Bahasa Indonesia", "A", "4", "Siti Aminah", "Mata pelajaran wajib"},
+			{"", "MAP-003", "Bahasa Inggris", "A", "4", "John Smith", "Mata pelajaran wajib"},
+		}
 
-    for i, sample := range samples {
-      row := i + 2
-      for j, val := range sample {
-        cell, _ := excelize.CoordinatesToCellName(j+1, row)
-        f.SetCellValue("Mata Pelajaran", cell, val)
-      }
-    }
+		for i, sample := range samples {
+			row := i + 2
+			for j, val := range sample {
+				cell, _ := excelize.CoordinatesToCellName(j+1, row)
+				f.SetCellValue("Mata Pelajaran", cell, val)
+			}
+		}
 
-    colWidths := []float64{10, 12, 30, 12, 12, 15, 25, 30}
-    for i, w := range colWidths {
-      colName := string(rune('A' + i))
-      f.SetColWidth("Mata Pelajaran", colName, colName, w)
-    }
+		colWidths := []float64{10, 14, 30, 12, 15, 25, 30}
+		for i, w := range colWidths {
+			colName := string(rune('A' + i))
+			f.SetColWidth("Mata Pelajaran", colName, colName, w)
+		}
 
-    var buf bytes.Buffer
-    if err := f.Write(&buf); err != nil {
-      serverErr(w, err)
-      return
-    }
+		var buf bytes.Buffer
+		if err := f.Write(&buf); err != nil {
+			serverErr(w, err)
+			return
+		}
 
-    w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.xlsx")
-    w.Write(buf.Bytes())
-  } else if format == "csv" {
-    w.Header().Set("Content-Type", "text/csv")
-    w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.csv")
-    template := `id,kode,nama,kelompok,fase,jp_per_minggu,guru,keterangan
-,MAP-001,Matematika,A,Fase D,6 JP,Budi Santoso,Mata pelajaran wajib
-,MAP-002,Bahasa Indonesia,A,Fase D,4 JP,Siti Aminah,Mata pelajaran wajib
-,MAP-003,Bahasa Inggris,A,Fase D,4 JP,John Smith,Mata pelajaran wajib
+		w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.xlsx")
+		w.Write(buf.Bytes())
+	} else if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.csv")
+		template := `id,kode_mapel,nama_mapel,kelompok,jp_per_minggu,guru,keterangan
+,MAP-001,Matematika,A,6,Budi Santoso,Mata pelajaran wajib
+,MAP-002,Bahasa Indonesia,A,4,Siti Aminah,Mata pelajaran wajib
+,MAP-003,Bahasa Inggris,A,4,John Smith,Mata pelajaran wajib
 `
-    w.Write([]byte(template))
-  } else {
-    w.Header().Set("Content-Type", "application/json")
-    w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.json")
-    template := map[string]any{
-      "data": []map[string]any{
-        {"id": "", "kode": "MAP-001", "nama": "Matematika", "kelompok": "A", "fase": "Fase D", "jpPerMinggu": "6 JP", "guru": "Budi Santoso", "keterangan": "Mata pelajaran wajib"},
-        {"id": "", "kode": "MAP-002", "nama": "Bahasa Indonesia", "kelompok": "A", "fase": "Fase D", "jpPerMinggu": "4 JP", "guru": "Siti Aminah", "keterangan": "Mata pelajaran wajib"},
-      },
-    }
-    json.NewEncoder(w).Encode(template)
-  }
+		w.Write([]byte(template))
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", "attachment; filename=template_mata_pelajaran.json")
+		template := map[string]any{
+			"data": []map[string]any{
+				{"id": "", "kodeMapel": "MAP-001", "namaMapel": "Matematika", "kelompok": "A", "jpPerMinggu": "6", "guru": "Budi Santoso", "keterangan": "Mata pelajaran wajib"},
+				{"id": "", "kodeMapel": "MAP-002", "namaMapel": "Bahasa Indonesia", "kelompok": "A", "jpPerMinggu": "4", "guru": "Siti Aminah", "keterangan": "Mata pelajaran wajib"},
+			},
+		}
+		json.NewEncoder(w).Encode(template)
+	}
 }
 
 func (a *App) importMapel(w http.ResponseWriter, r *http.Request) {
-  err := r.ParseMultipartForm(10 << 20) // 10 MB
-  if err != nil {
-    respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar (max 10MB)"})
-    return
-  }
+	err := r.ParseMultipartForm(10 << 20) // 10 MB
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File terlalu besar (max 10MB)"})
+		return
+	}
 
-  file, _, err := r.FormFile("file")
-  if err != nil {
-    respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"})
-    return
-  }
-  defer file.Close()
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File tidak ditemukan"})
+		return
+	}
+	defer file.Close()
 
-  content, err := io.ReadAll(file)
-  if err != nil {
-    serverErr(w, err)
-    return
-  }
+	content, err := io.ReadAll(file)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  var data []map[string]any
+	var data []map[string]any
 
-  // Get filename
-  _, fileHeader, _ := r.FormFile("file")
-  isXlsx := strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".xlsx")
+	// Get filename
+	_, fileHeader, _ := r.FormFile("file")
+	isXlsx := strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".xlsx")
 
-  // Check if XLSX
-  if isXlsx {
-    f, err := excelize.OpenReader(bytes.NewReader(content))
-    if err != nil {
-      respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid: " + err.Error()})
-      return
-    }
-    defer f.Close()
+	// Check if XLSX
+	if isXlsx {
+		f, err := excelize.OpenReader(bytes.NewReader(content))
+		if err != nil {
+			respond(w, 400, map[string]any{"success": false, "message": "File Excel tidak valid: " + err.Error()})
+			return
+		}
+		defer f.Close()
 
-    sheetName := "Mata Pelajaran"
-  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
-    sheetName = f.GetSheetName(0)
-  }
-  rows, err := f.GetRows(sheetName)
-    if err != nil {
-      respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Mata Pelajaran' tidak ditemukan"})
-      return
-    }
+		sheetName := "Mata Pelajaran"
+		if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+			sheetName = f.GetSheetName(0)
+		}
+		rows, err := f.GetRows(sheetName)
+		if err != nil {
+			respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Mata Pelajaran' tidak ditemukan"})
+			return
+		}
 
-    headerRowIndex := findHeaderRow(rows, []string{"nama"}, []string{"kode", "id"})
-    if headerRowIndex == -1 {
-      respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
-      return
-    }
+		headerRowIndex := findHeaderRow(rows, []string{"nama"}, []string{"kode", "id"})
+		if headerRowIndex == -1 {
+			respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+			return
+		}
 
-    fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
-      "id": {"id"},
-      "kode": {"kode"},
-      "nama": {"nama"},
-      "kelompok": {"kelompok"},
-      "fase": {"fase"},
-      "jp_per_minggu": {"jp per minggu", "jp_per_minggu", "jp", "jam pelajaran"},
-      "guru": {"guru"},
-      "keterangan": {"keterangan"},
-    })
+		fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+			"id":            {"id"},
+			"kode":          {"kode mapel", "kode_mapel", "kode"},
+			"nama":          {"nama mapel", "nama_mapel", "nama"},
+			"kelompok":      {"kelompok"},
+			"jp_per_minggu": {"jp per minggu", "jp_per_minggu", "jp", "jam pelajaran"},
+			"guru":          {"guru"},
+			"keterangan":    {"keterangan"},
+		})
 
-    for i := headerRowIndex + 1; i < len(rows); i++ {
-      row := rows[i]
-      item := make(map[string]any)
-      for field, idx := range fieldIndexes {
-        item[field] = getRowCell(row, idx)
-      }
-      if nama := strings.TrimSpace(toStr(item["nama"])); nama != "" {
-        data = append(data, item)
-      }
-    }
-  } else if parsedJSON, err := parseJSONArray(content); err == nil {
-    data = parsedJSON
-  } else {
-    records, err := parseCSVRecords(content)
-    if err != nil {
-      respond(w, 400, map[string]any{"success": false, "message": "Format file import tidak valid"})
-      return
-    }
-    if len(records) == 0 {
-      respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
-      return
-    }
+		for i := headerRowIndex + 1; i < len(rows); i++ {
+			row := rows[i]
+			item := make(map[string]any)
+			for field, idx := range fieldIndexes {
+				item[field] = getRowCell(row, idx)
+			}
+			if nama := strings.TrimSpace(toStr(item["nama"])); nama != "" {
+				data = append(data, item)
+			}
+		}
+	} else if parsedJSON, err := parseJSONArray(content); err == nil {
+		data = parsedJSON
+	} else {
+		records, err := parseCSVRecords(content)
+		if err != nil {
+			respond(w, 400, map[string]any{"success": false, "message": "Format file import tidak valid"})
+			return
+		}
+		if len(records) == 0 {
+			respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+			return
+		}
 
-    fieldIndexes := buildHeaderIndex(records[0], map[string][]string{
-      "id": {"id"},
-      "kode": {"kode"},
-      "nama": {"nama"},
-      "kelompok": {"kelompok"},
-      "fase": {"fase"},
-      "jp_per_minggu": {"jp per minggu", "jp_per_minggu", "jp", "jam pelajaran"},
-      "guru": {"guru"},
-      "keterangan": {"keterangan"},
-    })
+		fieldIndexes := buildHeaderIndex(records[0], map[string][]string{
+			"id":            {"id"},
+			"kode":          {"kode mapel", "kode_mapel", "kode"},
+			"nama":          {"nama mapel", "nama_mapel", "nama"},
+			"kelompok":      {"kelompok"},
+			"jp_per_minggu": {"jp per minggu", "jp_per_minggu", "jp", "jam pelajaran"},
+			"guru":          {"guru"},
+			"keterangan":    {"keterangan"},
+		})
 
-    for i := 1; i < len(records); i++ {
-      row := make(map[string]any)
-      for field, idx := range fieldIndexes {
-        row[field] = getRowCell(records[i], idx)
-      }
-      if nama := strings.TrimSpace(toStr(row["nama"])); nama != "" {
-        data = append(data, row)
-      }
-    }
-  }
+		for i := 1; i < len(records); i++ {
+			row := make(map[string]any)
+			for field, idx := range fieldIndexes {
+				row[field] = getRowCell(records[i], idx)
+			}
+			if nama := strings.TrimSpace(toStr(row["nama"])); nama != "" {
+				data = append(data, row)
+			}
+		}
+	}
 
-  if len(data) == 0 {
-    respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
-    return
-  }
+	if len(data) == 0 {
+		respond(w, 400, map[string]any{"success": false, "message": "Tidak ada data untuk diimport"})
+		return
+	}
 
-  imported := 0
-  for _, item := range data {
-    nama := toStr(item["nama"])
-    if nama == "" { continue }
+	imported := 0
+	for _, item := range data {
+		nama := toStr(item["nama"])
+		if nama == "" {
+			continue
+		}
 
-    kode := toStr(item["kode"])
-    if kode == "" { kode = toStr(item["Kode"]) }
-    kelompok := toStr(item["kelompok"])
-    if kelompok == "" { kelompok = toStr(item["Kelompok"]) }
-    if kelompok == "" { kelompok = "A" }
-    fase := toStr(item["fase"])
-    if fase == "" { fase = toStr(item["Fase"]) }
-    jpPerMinggu := toStr(item["jp_per_minggu"])
-    if jpPerMinggu == "" { jpPerMinggu = toStr(item["jpPerMinggu"]) }
-    if jpPerMinggu == "" { jpPerMinggu = toStr(item["JP"]) }
-    guru := toStr(item["guru"])
-    if guru == "" { guru = toStr(item["Guru"]) }
-    keterangan := toStr(item["keterangan"])
-    if keterangan == "" { keterangan = toStr(item["Keterangan"]) }
+		kode := toStr(item["kode"])
+		if kode == "" {
+			kode = toStr(item["Kode"])
+		}
+		kelompok := toStr(item["kelompok"])
+		if kelompok == "" {
+			kelompok = toStr(item["Kelompok"])
+		}
+		if kelompok == "" {
+			kelompok = "A"
+		}
+		jpPerMinggu := toStr(item["jp_per_minggu"])
+		if jpPerMinggu == "" {
+			jpPerMinggu = toStr(item["jpPerMinggu"])
+		}
+		if jpPerMinggu == "" {
+			jpPerMinggu = toStr(item["JP"])
+		}
+		guru := toStr(item["guru"])
+		if guru == "" {
+			guru = toStr(item["Guru"])
+		}
+		keterangan := toStr(item["keterangan"])
+		if keterangan == "" {
+			keterangan = toStr(item["Keterangan"])
+		}
 
-    // Check if exists by kode
-    var id string
-    err := a.db.QueryRow(r.Context(), "SELECT id FROM mata_pelajaran WHERE kode=$1", kode).Scan(&id)
-    if err == nil {
-      // Update existing
-      _, err = a.db.Exec(r.Context(),
-        "UPDATE mata_pelajaran SET nama=$1, kelompok=$2, fase=$3, jp_per_minggu=$4, guru=$5, keterangan=$6, updated_at=NOW() WHERE id=$7",
-        nama, kelompok, fase, jpPerMinggu, guru, keterangan, id)
-    } else {
-      // Insert new
-      _, err = a.db.Exec(r.Context(),
-        "INSERT INTO mata_pelajaran (kode, nama, kelompok, fase, jp_per_minggu, guru, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        kode, nama, kelompok, fase, jpPerMinggu, guru, keterangan)
-    }
-    if err == nil { imported++ }
-  }
+		// Check if exists by kode
+		var id string
+		err := a.db.QueryRow(r.Context(), "SELECT id FROM mata_pelajaran WHERE kode=$1", kode).Scan(&id)
+		if err == nil {
+			// Update existing
+			guruID, guruNama, resolveErr := a.resolveUserRef(r.Context(), guru)
+			if resolveErr != nil && guru != "" {
+				guruNama = guru
+			}
+			_, err = a.db.Exec(r.Context(),
+				"UPDATE mata_pelajaran SET kode=$1, kode_mapel=$2, nama=$3, nama_mapel=$4, kelompok=$5, jp_per_minggu=$6, guru_id=$7, guru=$8, keterangan=$9, updated_at=NOW() WHERE id=$10",
+				nullIfEmpty(kode), nullIfEmpty(kode), nama, nama, kelompok, jpPerMinggu, nullIfEmpty(guruID), nullIfEmpty(guruNama), keterangan, id)
+		} else {
+			guruID, guruNama, resolveErr := a.resolveUserRef(r.Context(), guru)
+			if resolveErr != nil && guru != "" {
+				guruNama = guru
+			}
+			_, err = a.db.Exec(r.Context(),
+				"INSERT INTO mata_pelajaran (kode, kode_mapel, nama, nama_mapel, kelompok, jp_per_minggu, guru_id, guru, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+				nullIfEmpty(kode), nullIfEmpty(kode), nama, nama, kelompok, jpPerMinggu, nullIfEmpty(guruID), nullIfEmpty(guruNama), keterangan)
+		}
+		if err == nil {
+			imported++
+		}
+	}
 
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d mata pelajaran", imported), "data": map[string]int{"imported": imported}})
+	respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d mata pelajaran", imported), "data": map[string]int{"imported": imported}})
 }
 
 func (a *App) exportKelas(w http.ResponseWriter, r *http.Request) {
-  rows, err := a.many(r.Context(), "SELECT id, nama, wali_kelas, keterangan FROM data_kelas ORDER BY nama")
-  if err != nil { serverErr(w, err); return }
+	rows, err := a.many(r.Context(), `
+    SELECT k.id, COALESCE(NULLIF(k.nama_kelas,''), k.nama) AS nama, COALESCE(u.nama, k.wali_kelas) AS wali_kelas, k.keterangan
+    FROM data_kelas k LEFT JOIN users u ON u.id = k.wali_kelas_id
+    ORDER BY COALESCE(NULLIF(k.nama_kelas,''), k.nama)
+  `)
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  f := excelize.NewFile()
-  f.SetSheetName("Sheet1", "Data Kelas")
+	f := excelize.NewFile()
+	f.SetSheetName("Sheet1", "Data Kelas")
 
-  headerStyle, _ := f.NewStyle(&excelize.Style{
-    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-    Alignment: &excelize.Alignment{Horizontal: "center"},
-  })
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
 
-  headers := []string{"ID", "Nama Kelas", "Wali Kelas", "Keterangan"}
-  for i, h := range headers {
-    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-    f.SetCellValue("Data Kelas", cell, h)
-    f.SetCellStyle("Data Kelas", cell, cell, headerStyle)
-  }
+	headers := []string{"ID", "Nama Kelas", "Wali Kelas", "Keterangan"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue("Data Kelas", cell, h)
+		f.SetCellStyle("Data Kelas", cell, cell, headerStyle)
+	}
 
-  for i, row := range rows {
-    rIdx := i + 2
-    f.SetCellValue("Data Kelas", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
-    f.SetCellValue("Data Kelas", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
-    f.SetCellValue("Data Kelas", fmt.Sprintf("C%d", rIdx), toStr(row["wali_kelas"]))
-    f.SetCellValue("Data Kelas", fmt.Sprintf("D%d", rIdx), toStr(row["keterangan"]))
-  }
+	for i, row := range rows {
+		rIdx := i + 2
+		f.SetCellValue("Data Kelas", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+		f.SetCellValue("Data Kelas", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
+		f.SetCellValue("Data Kelas", fmt.Sprintf("C%d", rIdx), toStr(row["wali_kelas"]))
+		f.SetCellValue("Data Kelas", fmt.Sprintf("D%d", rIdx), toStr(row["keterangan"]))
+	}
 
-  f.SetColWidth("Data Kelas", "A", "A", 36)
-  f.SetColWidth("Data Kelas", "B", "B", 15)
-  f.SetColWidth("Data Kelas", "C", "C", 30)
-  f.SetColWidth("Data Kelas", "D", "D", 40)
+	f.SetColWidth("Data Kelas", "A", "A", 36)
+	f.SetColWidth("Data Kelas", "B", "B", 15)
+	f.SetColWidth("Data Kelas", "C", "C", 30)
+	f.SetColWidth("Data Kelas", "D", "D", 40)
 
-  var buf bytes.Buffer
-  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=data_kelas_export_%s.xlsx", time.Now().Format("2006-01-02")))
-  w.Write(buf.Bytes())
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=data_kelas_export_%s.xlsx", time.Now().Format("2006-01-02")))
+	w.Write(buf.Bytes())
 }
 
 func (a *App) downloadKelasTemplate(w http.ResponseWriter, r *http.Request) {
-  f := excelize.NewFile()
-  f.SetSheetName("Sheet1", "Data Kelas")
+	f := excelize.NewFile()
+	f.SetSheetName("Sheet1", "Data Kelas")
 
-  headerStyle, _ := f.NewStyle(&excelize.Style{
-    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-    Alignment: &excelize.Alignment{Horizontal: "center"},
-  })
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
 
-  headers := []string{"ID", "Nama Kelas", "Wali Kelas", "Keterangan"}
-  for i, h := range headers {
-    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-    f.SetCellValue("Data Kelas", cell, h)
-    f.SetCellStyle("Data Kelas", cell, cell, headerStyle)
-  }
+	headers := []string{"ID", "Nama Kelas", "Wali Kelas", "Keterangan"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue("Data Kelas", cell, h)
+		f.SetCellStyle("Data Kelas", cell, cell, headerStyle)
+	}
 
-  f.SetCellValue("Data Kelas", "A2", "")
-  f.SetCellValue("Data Kelas", "B2", "7A")
-  f.SetCellValue("Data Kelas", "C2", "Budi Santoso")
-  f.SetCellValue("Data Kelas", "D2", "Keterangan kelas")
+	f.SetCellValue("Data Kelas", "A2", "")
+	f.SetCellValue("Data Kelas", "B2", "7A")
+	f.SetCellValue("Data Kelas", "C2", "Wali Kelas 7A")
+	f.SetCellValue("Data Kelas", "D2", "Keterangan kelas")
 
-  var buf bytes.Buffer
-  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-  w.Header().Set("Content-Disposition", "attachment; filename=template_data_kelas.xlsx")
-  w.Write(buf.Bytes())
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", "attachment; filename=template_data_kelas.xlsx")
+	w.Write(buf.Bytes())
 }
 
 func (a *App) importKelas(w http.ResponseWriter, r *http.Request) {
-  err := r.ParseMultipartForm(10 << 20)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File too large"}); return }
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File too large"})
+		return
+	}
 
-  file, _, err := r.FormFile("file")
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File not found"}); return }
-  defer file.Close()
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File not found"})
+		return
+	}
+	defer file.Close()
 
-  content, _ := io.ReadAll(file)
-  f, err := excelize.OpenReader(bytes.NewReader(content))
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
-  defer f.Close()
+	content, _ := io.ReadAll(file)
+	f, err := excelize.OpenReader(bytes.NewReader(content))
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"})
+		return
+	}
+	defer f.Close()
 
-  sheetName := "Data Kelas"
-  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
-    sheetName = f.GetSheetName(0)
-  }
-  rows, err := f.GetRows(sheetName)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Data Kelas' not found"}); return }
+	sheetName := "Data Kelas"
+	if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+		sheetName = f.GetSheetName(0)
+	}
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Data Kelas' not found"})
+		return
+	}
 
-  headerRowIndex := findHeaderRow(rows, []string{"nama kelas", "kelas", "nama"})
-  if headerRowIndex == -1 { respond(w, 400, map[string]any{"success": false, "message": "Format template data kelas tidak sesuai"}); return }
+	headerRowIndex := findHeaderRow(rows, []string{"nama kelas", "kelas", "nama"})
+	if headerRowIndex == -1 {
+		respond(w, 400, map[string]any{"success": false, "message": "Format template data kelas tidak sesuai"})
+		return
+	}
 
-  fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
-    "nama": {"nama kelas", "kelas", "nama"},
-    "wali_kelas": {"wali kelas", "wali_kelas"},
-    "keterangan": {"keterangan"},
-  })
+	fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+		"nama":       {"nama kelas", "nama_kelas", "kelas", "nama"},
+		"wali_kelas": {"wali kelas", "wali_kelas"},
+		"keterangan": {"keterangan"},
+	})
 
-  imported := 0
-  errs := []map[string]any{}
-  for i := headerRowIndex + 1; i < len(rows); i++ {
-    row := rows[i]
-    nama := getRowCell(row, fieldIndexes["nama"])
-    if nama == "" { continue }
-    waliKelas := getRowCell(row, fieldIndexes["wali_kelas"])
-    keterangan := getRowCell(row, fieldIndexes["keterangan"])
+	imported := 0
+	errs := []map[string]any{}
+	for i := headerRowIndex + 1; i < len(rows); i++ {
+		row := rows[i]
+		nama := getRowCell(row, fieldIndexes["nama"])
+		if nama == "" {
+			continue
+		}
+		waliKelas := getRowCell(row, fieldIndexes["wali_kelas"])
+		keterangan := getRowCell(row, fieldIndexes["keterangan"])
 
-    var id string
-    err = a.db.QueryRow(r.Context(), "SELECT id FROM data_kelas WHERE nama=$1", nama).Scan(&id)
-    if err == nil {
-      _, err = a.db.Exec(r.Context(),
-        "UPDATE data_kelas SET wali_kelas=$1, keterangan=$2, updated_at=NOW() WHERE id=$3",
-        waliKelas, nullIfEmpty(keterangan), id)
-    } else {
-      _, err = a.db.Exec(r.Context(),
-        "INSERT INTO data_kelas (nama, wali_kelas, keterangan) VALUES ($1, $2, $3)",
-        nama, waliKelas, nullIfEmpty(keterangan))
-    }
-    if err == nil {
-      imported++
-    } else {
-      errs = append(errs, map[string]any{"nama": nama, "error": err.Error()})
-    }
-  }
+		waliKelasID, waliKelasNama, resolveErr := a.resolveUserRef(r.Context(), waliKelas)
+		if resolveErr != nil && waliKelas != "" {
+			waliKelasNama = waliKelas
+		}
+		var id string
+		err = a.db.QueryRow(r.Context(), "SELECT id FROM data_kelas WHERE nama=$1 OR nama_kelas=$1", nama).Scan(&id)
+		if err == nil {
+			_, err = a.db.Exec(r.Context(),
+				"UPDATE data_kelas SET nama=$1, nama_kelas=$2, wali_kelas_id=$3, wali_kelas=$4, keterangan=$5, updated_at=NOW() WHERE id=$6",
+				nama, nama, nullIfEmpty(waliKelasID), nullIfEmpty(waliKelasNama), nullIfEmpty(keterangan), id)
+		} else {
+			_, err = a.db.Exec(r.Context(),
+				"INSERT INTO data_kelas (nama, nama_kelas, wali_kelas_id, wali_kelas, keterangan) VALUES ($1, $2, $3, $4, $5)",
+				nama, nama, nullIfEmpty(waliKelasID), nullIfEmpty(waliKelasNama), nullIfEmpty(keterangan))
+		}
+		if err == nil {
+			imported++
+		} else {
+			errs = append(errs, map[string]any{"nama": nama, "error": err.Error()})
+		}
+	}
 
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d kelas", imported), "data": map[string]any{"imported": imported, "errors": errs}})
+	respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d kelas", imported), "data": map[string]any{"imported": imported, "errors": errs}})
 }
 
 func (a *App) exportEkstra(w http.ResponseWriter, r *http.Request) {
-  rows, err := a.many(r.Context(), "SELECT id, kode, nama, jenis, pembina, jadwal, tempat, keterangan FROM ekstrakurikuler ORDER BY kode")
-  if err != nil { serverErr(w, err); return }
+	rows, err := a.many(r.Context(), "SELECT id, kode, nama, jenis, pembina, jadwal, tempat, keterangan FROM ekstrakurikuler ORDER BY kode")
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  f := excelize.NewFile()
-  f.SetSheetName("Sheet1", "Ekstrakurikuler")
+	f := excelize.NewFile()
+	f.SetSheetName("Sheet1", "Ekstrakurikuler")
 
-  headerStyle, _ := f.NewStyle(&excelize.Style{
-    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-    Alignment: &excelize.Alignment{Horizontal: "center"},
-  })
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
 
-  headers := []string{"ID", "Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
-  for i, h := range headers {
-    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-    f.SetCellValue("Ekstrakurikuler", cell, h)
-    f.SetCellStyle("Ekstrakurikuler", cell, cell, headerStyle)
-  }
+	headers := []string{"ID", "Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue("Ekstrakurikuler", cell, h)
+		f.SetCellStyle("Ekstrakurikuler", cell, cell, headerStyle)
+	}
 
-  for i, row := range rows {
-    rIdx := i + 2
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("B%d", rIdx), toStr(row["kode"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("D%d", rIdx), toStr(row["jenis"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("E%d", rIdx), toStr(row["pembina"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("F%d", rIdx), toStr(row["jadwal"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("G%d", rIdx), toStr(row["tempat"]))
-    f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("H%d", rIdx), toStr(row["keterangan"]))
-  }
+	for i, row := range rows {
+		rIdx := i + 2
+		f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+		f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("B%d", rIdx), toStr(row["kode"]))
+		f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("C%d", rIdx), toStr(row["nama"]))
+		f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("D%d", rIdx), toStr(row["jenis"]))
+		f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("E%d", rIdx), toStr(row["pembina"]))
+		f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("F%d", rIdx), toStr(row["jadwal"]))
+		f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("G%d", rIdx), toStr(row["tempat"]))
+		f.SetCellValue("Ekstrakurikuler", fmt.Sprintf("H%d", rIdx), toStr(row["keterangan"]))
+	}
 
-  f.SetColWidth("Ekstrakurikuler", "A", "A", 36)
-  f.SetColWidth("Ekstrakurikuler", "B", "B", 15)
-  f.SetColWidth("Ekstrakurikuler", "C", "C", 30)
-  f.SetColWidth("Ekstrakurikuler", "H", "H", 40)
+	f.SetColWidth("Ekstrakurikuler", "A", "A", 36)
+	f.SetColWidth("Ekstrakurikuler", "B", "B", 15)
+	f.SetColWidth("Ekstrakurikuler", "C", "C", 30)
+	f.SetColWidth("Ekstrakurikuler", "H", "H", 40)
 
-  var buf bytes.Buffer
-  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=ekstrakurikuler_export_%s.xlsx", time.Now().Format("2006-01-02")))
-  w.Write(buf.Bytes())
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=ekstrakurikuler_export_%s.xlsx", time.Now().Format("2006-01-02")))
+	w.Write(buf.Bytes())
 }
 
 func (a *App) downloadEkstraTemplate(w http.ResponseWriter, r *http.Request) {
-  f := excelize.NewFile()
-  f.SetSheetName("Sheet1", "Ekstrakurikuler")
+	f := excelize.NewFile()
+	f.SetSheetName("Sheet1", "Ekstrakurikuler")
 
-  headerStyle, _ := f.NewStyle(&excelize.Style{
-    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-    Alignment: &excelize.Alignment{Horizontal: "center"},
-  })
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
 
-  headers := []string{"ID", "Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
-  for i, h := range headers {
-    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-    f.SetCellValue("Ekstrakurikuler", cell, h)
-    f.SetCellStyle("Ekstrakurikuler", cell, cell, headerStyle)
-  }
+	headers := []string{"ID", "Kode", "Nama", "Jenis", "Pembina", "Jadwal", "Tempat", "Keterangan"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue("Ekstrakurikuler", cell, h)
+		f.SetCellStyle("Ekstrakurikuler", cell, cell, headerStyle)
+	}
 
-  f.SetCellValue("Ekstrakurikuler", "A2", "")
-  f.SetCellValue("Ekstrakurikuler", "B2", "PRAMUKA")
-  f.SetCellValue("Ekstrakurikuler", "C2", "Pramuka Wajib")
-  f.SetCellValue("Ekstrakurikuler", "D2", "Wajib")
+	f.SetCellValue("Ekstrakurikuler", "A2", "")
+	f.SetCellValue("Ekstrakurikuler", "B2", "PRAMUKA")
+	f.SetCellValue("Ekstrakurikuler", "C2", "Pramuka Wajib")
+	f.SetCellValue("Ekstrakurikuler", "D2", "Wajib")
 
-  var buf bytes.Buffer
-  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-  w.Header().Set("Content-Disposition", "attachment; filename=template_ekstrakurikuler.xlsx")
-  w.Write(buf.Bytes())
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", "attachment; filename=template_ekstrakurikuler.xlsx")
+	w.Write(buf.Bytes())
 }
 
 func (a *App) importEkstra(w http.ResponseWriter, r *http.Request) {
-  err := r.ParseMultipartForm(10 << 20)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File too large"}); return }
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File too large"})
+		return
+	}
 
-  file, _, err := r.FormFile("file")
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File not found"}); return }
-  defer file.Close()
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File not found"})
+		return
+	}
+	defer file.Close()
 
-  content, _ := io.ReadAll(file)
-  f, err := excelize.OpenReader(bytes.NewReader(content))
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
-  defer f.Close()
+	content, _ := io.ReadAll(file)
+	f, err := excelize.OpenReader(bytes.NewReader(content))
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"})
+		return
+	}
+	defer f.Close()
 
-  sheetName := "Ekstrakurikuler"
-  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
-    sheetName = f.GetSheetName(0)
-  }
-  rows, err := f.GetRows(sheetName)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Ekstrakurikuler' not found"}); return }
+	sheetName := "Ekstrakurikuler"
+	if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+		sheetName = f.GetSheetName(0)
+	}
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Ekstrakurikuler' not found"})
+		return
+	}
 
-  headerRowIndex := findHeaderRow(rows, []string{"nama"}, []string{"kode"})
-  if headerRowIndex == -1 { respond(w, 400, map[string]any{"success": false, "message": "Format template ekstrakurikuler tidak sesuai"}); return }
+	headerRowIndex := findHeaderRow(rows, []string{"nama"}, []string{"kode"})
+	if headerRowIndex == -1 {
+		respond(w, 400, map[string]any{"success": false, "message": "Format template ekstrakurikuler tidak sesuai"})
+		return
+	}
 
-  fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
-    "kode": {"kode"},
-    "nama": {"nama"},
-    "jenis": {"jenis"},
-    "pembina": {"pembina"},
-    "jadwal": {"jadwal"},
-    "tempat": {"tempat"},
-    "keterangan": {"keterangan"},
-  })
+	fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+		"kode":       {"kode"},
+		"nama":       {"nama"},
+		"jenis":      {"jenis"},
+		"pembina":    {"pembina"},
+		"jadwal":     {"jadwal"},
+		"tempat":     {"tempat"},
+		"keterangan": {"keterangan"},
+	})
 
-  imported := 0
-  errs := []map[string]any{}
-  for i := headerRowIndex + 1; i < len(rows); i++ {
-    row := rows[i]
-    kode := getRowCell(row, fieldIndexes["kode"])
-    nama := getRowCell(row, fieldIndexes["nama"])
-    if nama == "" { continue }
-    
-    jenis := coalesceVal(getRowCell(row, fieldIndexes["jenis"]), "Wajib")
-    pembina := getRowCell(row, fieldIndexes["pembina"])
-    jadwal := getRowCell(row, fieldIndexes["jadwal"])
-    tempat := getRowCell(row, fieldIndexes["tempat"])
-    keterangan := getRowCell(row, fieldIndexes["keterangan"])
+	imported := 0
+	errs := []map[string]any{}
+	for i := headerRowIndex + 1; i < len(rows); i++ {
+		row := rows[i]
+		kode := getRowCell(row, fieldIndexes["kode"])
+		nama := getRowCell(row, fieldIndexes["nama"])
+		if nama == "" {
+			continue
+		}
 
-    var id string
-    if kode != "" {
-      err = a.db.QueryRow(r.Context(), "SELECT id FROM ekstrakurikuler WHERE kode=$1", kode).Scan(&id)
-    } else {
-      err = a.db.QueryRow(r.Context(), "SELECT id FROM ekstrakurikuler WHERE nama=$1", nama).Scan(&id)
-    }
+		jenis := coalesceVal(getRowCell(row, fieldIndexes["jenis"]), "Wajib")
+		pembina := getRowCell(row, fieldIndexes["pembina"])
+		jadwal := getRowCell(row, fieldIndexes["jadwal"])
+		tempat := getRowCell(row, fieldIndexes["tempat"])
+		keterangan := getRowCell(row, fieldIndexes["keterangan"])
 
-    if err == nil {
-      _, err = a.db.Exec(r.Context(),
-        "UPDATE ekstrakurikuler SET kode=$1, nama=$2, jenis=$3, pembina=$4, jadwal=$5, tempat=$6, keterangan=$7, updated_at=NOW() WHERE id=$8",
-        nullIfEmpty(kode), nama, jenis, nullIfEmpty(pembina), nullIfEmpty(jadwal), nullIfEmpty(tempat), nullIfEmpty(keterangan), id)
-    } else {
-      _, err = a.db.Exec(r.Context(),
-        "INSERT INTO ekstrakurikuler (kode, nama, jenis, pembina, jadwal, tempat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-        nullIfEmpty(kode), nama, jenis, nullIfEmpty(pembina), nullIfEmpty(jadwal), nullIfEmpty(tempat), nullIfEmpty(keterangan))
-    }
-    if err == nil {
-      imported++
-    } else {
-      errs = append(errs, map[string]any{"kode": kode, "nama": nama, "error": err.Error()})
-    }
-  }
+		var id string
+		if kode != "" {
+			err = a.db.QueryRow(r.Context(), "SELECT id FROM ekstrakurikuler WHERE kode=$1", kode).Scan(&id)
+		} else {
+			err = a.db.QueryRow(r.Context(), "SELECT id FROM ekstrakurikuler WHERE nama=$1", nama).Scan(&id)
+		}
 
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d ekstrakurikuler", imported), "data": map[string]any{"imported": imported, "errors": errs}})
+		if err == nil {
+			_, err = a.db.Exec(r.Context(),
+				"UPDATE ekstrakurikuler SET kode=$1, nama=$2, jenis=$3, pembina=$4, jadwal=$5, tempat=$6, keterangan=$7, updated_at=NOW() WHERE id=$8",
+				nullIfEmpty(kode), nama, jenis, nullIfEmpty(pembina), nullIfEmpty(jadwal), nullIfEmpty(tempat), nullIfEmpty(keterangan), id)
+		} else {
+			_, err = a.db.Exec(r.Context(),
+				"INSERT INTO ekstrakurikuler (kode, nama, jenis, pembina, jadwal, tempat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+				nullIfEmpty(kode), nama, jenis, nullIfEmpty(pembina), nullIfEmpty(jadwal), nullIfEmpty(tempat), nullIfEmpty(keterangan))
+		}
+		if err == nil {
+			imported++
+		} else {
+			errs = append(errs, map[string]any{"kode": kode, "nama": nama, "error": err.Error()})
+		}
+	}
+
+	respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d ekstrakurikuler", imported), "data": map[string]any{"imported": imported, "errors": errs}})
 }
 
 func (a *App) exportMutasi(w http.ResponseWriter, r *http.Request) {
-  rows, err := a.many(r.Context(), "SELECT m.id, s.nama, s.nisn, m.jenis, m.tanggal, m.asal_sekolah, m.tujuan_sekolah, m.alasan, m.nomor_surat, m.keterangan FROM mutasi m JOIN data_siswa s ON m.siswa_id = s.id ORDER BY m.created_at DESC")
-  if err != nil { serverErr(w, err); return }
+	rows, err := a.many(r.Context(), "SELECT m.id, s.nama, s.nisn, m.jenis, m.tanggal, m.asal_sekolah, m.tujuan_sekolah, m.alasan, m.nomor_surat, m.keterangan FROM mutasi m JOIN data_siswa s ON m.siswa_id = s.id ORDER BY m.created_at DESC")
+	if err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  f := excelize.NewFile()
-  f.SetSheetName("Sheet1", "Mutasi Siswa")
+	f := excelize.NewFile()
+	f.SetSheetName("Sheet1", "Mutasi Siswa")
 
-  headerStyle, _ := f.NewStyle(&excelize.Style{
-    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-    Alignment: &excelize.Alignment{Horizontal: "center"},
-  })
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
 
-  headers := []string{"ID", "Nama Siswa", "NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
-  for i, h := range headers {
-    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-    f.SetCellValue("Mutasi Siswa", cell, h)
-    f.SetCellStyle("Mutasi Siswa", cell, cell, headerStyle)
-  }
+	headers := []string{"ID", "Nama Siswa", "NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue("Mutasi Siswa", cell, h)
+		f.SetCellStyle("Mutasi Siswa", cell, cell, headerStyle)
+	}
 
-  for i, row := range rows {
-    rIdx := i + 2
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("C%d", rIdx), toStr(row["nisn"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("D%d", rIdx), toStr(row["jenis"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("E%d", rIdx), toStr(row["tanggal"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("F%d", rIdx), toStr(row["asal_sekolah"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("G%d", rIdx), toStr(row["tujuan_sekolah"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("H%d", rIdx), toStr(row["alasan"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("I%d", rIdx), toStr(row["nomor_surat"]))
-    f.SetCellValue("Mutasi Siswa", fmt.Sprintf("J%d", rIdx), toStr(row["keterangan"]))
-  }
+	for i, row := range rows {
+		rIdx := i + 2
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("A%d", rIdx), toStr(row["id"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("B%d", rIdx), toStr(row["nama"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("C%d", rIdx), toStr(row["nisn"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("D%d", rIdx), toStr(row["jenis"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("E%d", rIdx), toStr(row["tanggal"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("F%d", rIdx), toStr(row["asal_sekolah"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("G%d", rIdx), toStr(row["tujuan_sekolah"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("H%d", rIdx), toStr(row["alasan"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("I%d", rIdx), toStr(row["nomor_surat"]))
+		f.SetCellValue("Mutasi Siswa", fmt.Sprintf("J%d", rIdx), toStr(row["keterangan"]))
+	}
 
-  f.SetColWidth("Mutasi Siswa", "A", "A", 36)
-  f.SetColWidth("Mutasi Siswa", "B", "B", 25)
-  f.SetColWidth("Mutasi Siswa", "C", "C", 15)
-  f.SetColWidth("Mutasi Siswa", "H", "J", 30)
+	f.SetColWidth("Mutasi Siswa", "A", "A", 36)
+	f.SetColWidth("Mutasi Siswa", "B", "B", 25)
+	f.SetColWidth("Mutasi Siswa", "C", "C", 15)
+	f.SetColWidth("Mutasi Siswa", "H", "J", 30)
 
-  var buf bytes.Buffer
-  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-  w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mutasi_export_%s.xlsx", time.Now().Format("2006-01-02")))
-  w.Write(buf.Bytes())
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=mutasi_export_%s.xlsx", time.Now().Format("2006-01-02")))
+	w.Write(buf.Bytes())
 }
 
 func (a *App) downloadMutasiTemplate(w http.ResponseWriter, r *http.Request) {
-  f := excelize.NewFile()
-  f.SetSheetName("Sheet1", "Mutasi")
+	f := excelize.NewFile()
+	f.SetSheetName("Sheet1", "Mutasi")
 
-  headerStyle, _ := f.NewStyle(&excelize.Style{
-    Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
-    Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
-    Alignment: &excelize.Alignment{Horizontal: "center"},
-  })
+	headerStyle, _ := f.NewStyle(&excelize.Style{
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Fill:      excelize.Fill{Type: "pattern", Color: []string{"#4F46E5"}, Pattern: 1},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
 
-  headers := []string{"ID", "NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
-  for i, h := range headers {
-    cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-    f.SetCellValue("Mutasi", cell, h)
-    f.SetCellStyle("Mutasi", cell, cell, headerStyle)
-  }
+	headers := []string{"ID", "NISN", "Jenis", "Tanggal", "Asal Sekolah", "Tujuan Sekolah", "Alasan", "Nomor Surat", "Keterangan"}
+	for i, h := range headers {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue("Mutasi", cell, h)
+		f.SetCellStyle("Mutasi", cell, cell, headerStyle)
+	}
 
-  f.SetCellValue("Mutasi", "A2", "")
-  f.SetCellValue("Mutasi", "B2", "1234567890")
-  f.SetCellValue("Mutasi", "C2", "Masuk")
-  f.SetCellValue("Mutasi", "D2", "2024-01-01")
+	f.SetCellValue("Mutasi", "A2", "")
+	f.SetCellValue("Mutasi", "B2", "1234567890")
+	f.SetCellValue("Mutasi", "C2", "Masuk")
+	f.SetCellValue("Mutasi", "D2", "2024-01-01")
 
-  var buf bytes.Buffer
-  if err := f.Write(&buf); err != nil { serverErr(w, err); return }
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		serverErr(w, err)
+		return
+	}
 
-  w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-  w.Header().Set("Content-Disposition", "attachment; filename=template_mutasi.xlsx")
-  w.Write(buf.Bytes())
+	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	w.Header().Set("Content-Disposition", "attachment; filename=template_mutasi.xlsx")
+	w.Write(buf.Bytes())
 }
 
 func (a *App) importMutasi(w http.ResponseWriter, r *http.Request) {
-  err := r.ParseMultipartForm(10 << 20)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File too large"}); return }
+	err := r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File too large"})
+		return
+	}
 
-  file, _, err := r.FormFile("file")
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "File not found"}); return }
-  defer file.Close()
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "File not found"})
+		return
+	}
+	defer file.Close()
 
-  content, _ := io.ReadAll(file)
-  f, err := excelize.OpenReader(bytes.NewReader(content))
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"}); return }
-  defer f.Close()
+	content, _ := io.ReadAll(file)
+	f, err := excelize.OpenReader(bytes.NewReader(content))
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Invalid Excel file"})
+		return
+	}
+	defer f.Close()
 
-  sheetName := "Mutasi"
-  if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
-    sheetName = f.GetSheetName(0)
-  }
-  rows, err := f.GetRows(sheetName)
-  if err != nil { respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Mutasi' not found"}); return }
+	sheetName := "Mutasi"
+	if idx, _ := f.GetSheetIndex(sheetName); idx == -1 {
+		sheetName = f.GetSheetName(0)
+	}
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		respond(w, 400, map[string]any{"success": false, "message": "Sheet 'Mutasi' not found"})
+		return
+	}
 
-  headerRowIndex := findHeaderRow(rows, []string{"nisn"}, []string{"jenis"})
-  if headerRowIndex == -1 { respond(w, 400, map[string]any{"success": false, "message": "Format template mutasi tidak sesuai"}); return }
+	headerRowIndex := findHeaderRow(rows, []string{"nisn"}, []string{"jenis"})
+	if headerRowIndex == -1 {
+		respond(w, 400, map[string]any{"success": false, "message": "Format template mutasi tidak sesuai"})
+		return
+	}
 
-  fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
-    "nisn": {"nisn"},
-    "jenis": {"jenis"},
-    "tanggal": {"tanggal"},
-    "asal_sekolah": {"asal sekolah"},
-    "tujuan_sekolah": {"tujuan sekolah"},
-    "alasan": {"alasan"},
-    "nomor_surat": {"nomor surat"},
-    "keterangan": {"keterangan"},
-  })
+	fieldIndexes := buildHeaderIndex(rows[headerRowIndex], map[string][]string{
+		"nisn":           {"nisn"},
+		"jenis":          {"jenis"},
+		"tanggal":        {"tanggal"},
+		"asal_sekolah":   {"asal sekolah"},
+		"tujuan_sekolah": {"tujuan sekolah"},
+		"alasan":         {"alasan"},
+		"nomor_surat":    {"nomor surat"},
+		"keterangan":     {"keterangan"},
+	})
 
-  imported := 0
-  for i := headerRowIndex + 1; i < len(rows); i++ {
-    row := rows[i]
-    nisn := getRowCell(row, fieldIndexes["nisn"])
-    jenis := getRowCell(row, fieldIndexes["jenis"])
-    if nisn == "" || jenis == "" { continue }
+	imported := 0
+	for i := headerRowIndex + 1; i < len(rows); i++ {
+		row := rows[i]
+		nisn := getRowCell(row, fieldIndexes["nisn"])
+		jenis := getRowCell(row, fieldIndexes["jenis"])
+		if nisn == "" || jenis == "" {
+			continue
+		}
 
-    var siswaID string
-    err := a.db.QueryRow(r.Context(), "SELECT id FROM data_siswa WHERE nisn=$1", nisn).Scan(&siswaID)
-    if err != nil { continue } // Skip if student not found
+		var siswaID string
+		err := a.db.QueryRow(r.Context(), "SELECT id FROM data_siswa WHERE nisn=$1", nisn).Scan(&siswaID)
+		if err != nil {
+			continue
+		} // Skip if student not found
 
-    tanggal := getRowCell(row, fieldIndexes["tanggal"])
-    asal := getRowCell(row, fieldIndexes["asal_sekolah"])
-    tujuan := getRowCell(row, fieldIndexes["tujuan_sekolah"])
-    alasan := getRowCell(row, fieldIndexes["alasan"])
-    nomor := getRowCell(row, fieldIndexes["nomor_surat"])
-    ket := getRowCell(row, fieldIndexes["keterangan"])
+		tanggal := getRowCell(row, fieldIndexes["tanggal"])
+		asal := getRowCell(row, fieldIndexes["asal_sekolah"])
+		tujuan := getRowCell(row, fieldIndexes["tujuan_sekolah"])
+		alasan := getRowCell(row, fieldIndexes["alasan"])
+		nomor := getRowCell(row, fieldIndexes["nomor_surat"])
+		ket := getRowCell(row, fieldIndexes["keterangan"])
 
-    _, err = a.db.Exec(r.Context(),
-      "INSERT INTO mutasi (siswa_id, jenis, tanggal, asal_sekolah, tujuan_sekolah, alasan, nomor_surat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-      siswaID, jenis, tanggal, asal, tujuan, alasan, nomor, ket)
-    if err == nil { 
-      imported++ 
-      status := "Aktif"
-      if jenis == "Keluar" { status = "Pindah" }
-      a.db.Exec(r.Context(), "UPDATE data_siswa SET status=$1, updated_at=NOW() WHERE id=$2", status, siswaID)
-    }
-  }
+		_, err = a.db.Exec(r.Context(),
+			"INSERT INTO mutasi (siswa_id, jenis, tanggal, asal_sekolah, tujuan_sekolah, alasan, nomor_surat, keterangan) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+			siswaID, jenis, tanggal, asal, tujuan, alasan, nomor, ket)
+		if err == nil {
+			imported++
+			status := "Aktif"
+			if jenis == "Keluar" {
+				status = "Pindah"
+			}
+			a.db.Exec(r.Context(), "UPDATE data_siswa SET status=$1, updated_at=NOW() WHERE id=$2", status, siswaID)
+		}
+	}
 
-  respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d data mutasi", imported)})
+	respond(w, 200, map[string]any{"success": true, "message": fmt.Sprintf("Berhasil import %d data mutasi", imported)})
 }

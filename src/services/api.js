@@ -1,6 +1,60 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 const API_TIMEOUT_MS = 15000;
 
+function normalizeSekolahData(data = {}) {
+  return {
+    ...data,
+    namaSekolah: data.namaSekolah ?? data.nama_sekolah ?? '',
+    npsn: data.npsn ?? '',
+    alamat: data.alamat ?? '',
+    kelurahan: data.kelurahan ?? '',
+    kecamatan: data.kecamatan ?? '',
+    kota: data.kota ?? '',
+    provinsi: data.provinsi ?? '',
+    kodePos: data.kodePos ?? data.kode_pos ?? '',
+    telepon: data.telepon ?? '',
+    email: data.email ?? '',
+    website: data.website ?? '',
+    kepalaSekolah: data.kepalaSekolah ?? data.kepala_sekolah ?? '',
+    nipKepalaSekolah: data.nipKepalaSekolah ?? data.nip_kepala_sekolah ?? '',
+  };
+}
+
+function serializeSekolahData(data = {}) {
+  return {
+    namaSekolah: data.namaSekolah ?? data.nama_sekolah ?? '',
+    npsn: data.npsn ?? '',
+    alamat: data.alamat ?? '',
+    kelurahan: data.kelurahan ?? '',
+    kecamatan: data.kecamatan ?? '',
+    kota: data.kota ?? '',
+    provinsi: data.provinsi ?? '',
+    kodePos: data.kodePos ?? data.kode_pos ?? '',
+    telepon: data.telepon ?? '',
+    email: data.email ?? '',
+    website: data.website ?? '',
+    kepalaSekolah: data.kepalaSekolah ?? data.kepala_sekolah ?? '',
+    nipKepalaSekolah: data.nipKepalaSekolah ?? data.nip_kepala_sekolah ?? '',
+  };
+}
+
+function normalizeInformasiUmum(data = {}) {
+  return {
+    ...data,
+    tahunAjaran: data.tahunAjaran ?? data.tahun_ajaran ?? '',
+    semester: String(data.semester ?? '1'),
+    kelas: data.kelas ?? '',
+  };
+}
+
+function serializeInformasiUmum(data = {}) {
+  return {
+    tahunAjaran: data.tahunAjaran ?? data.tahun_ajaran ?? '',
+    semester: String(data.semester ?? '1'),
+    kelas: data.kelas ?? '',
+  };
+}
+
 // Helper function for API calls
 async function apiCall(endpoint, options = {}) {
   const token = localStorage.getItem('token');
@@ -144,19 +198,29 @@ export const usersAPI = {
 
 // Sekolah API
 export const sekolahAPI = {
-  get: () => apiCall('/sekolah/sekolah'),
-  save: (data) => 
-    apiCall('/sekolah/sekolah', {
+  get: async () => {
+    const response = await apiCall('/sekolah/sekolah');
+    return response?.data ? { ...response, data: normalizeSekolahData(response.data) } : response;
+  },
+  save: async (data) => {
+    const response = await apiCall('/sekolah/sekolah', {
       method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  
-  getInformasi: () => apiCall('/sekolah/informasi'),
-  saveInformasi: (data) => 
-    apiCall('/sekolah/informasi', {
+      body: JSON.stringify(serializeSekolahData(data)),
+    });
+    return response?.data ? { ...response, data: normalizeSekolahData(response.data) } : response;
+  },
+
+  getInformasi: async () => {
+    const response = await apiCall('/sekolah/informasi');
+    return response?.data ? { ...response, data: normalizeInformasiUmum(response.data) } : response;
+  },
+  saveInformasi: async (data) => {
+    const response = await apiCall('/sekolah/informasi', {
       method: 'POST',
-      body: JSON.stringify(data),
-    }),
+      body: JSON.stringify(serializeInformasiUmum(data)),
+    });
+    return response?.data ? { ...response, data: normalizeInformasiUmum(response.data) } : response;
+  },
 };
 
 // Siswa API

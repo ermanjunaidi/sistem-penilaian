@@ -38,6 +38,12 @@ export default function DataSekolah() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!dataSekolah.namaSekolah?.trim()) {
+      setMessage('');
+      setError('Nama sekolah wajib diisi.');
+      return;
+    }
+
     setSaving(true);
     setMessage('');
     setError('');
