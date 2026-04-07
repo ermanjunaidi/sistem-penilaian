@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, School, Search, Users, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { usersAPI, kelasAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import SortableHeader from '../../components/common/SortableHeader';
 
 const INITIAL_FORM = {
   nama: '',
@@ -14,7 +16,7 @@ const INITIAL_FORM = {
 };
 
 export default function DataKelas() {
-  const { dataKelas, setDataKelas, dataSiswa, generateId } = useApp();
+  const { dataKelas, setDataKelas, dataSiswa } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [editingKelas, setEditingKelas] = useState(null);
@@ -25,14 +27,14 @@ export default function DataKelas() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [importFile, setImportFile] = useState(null);
 
-  const fetchKelas = async () => {
+  const fetchKelas = useCallback(async () => {
     try {
       const res = await kelasAPI.getAll();
       setDataKelas(res.data || []);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [setDataKelas]);
 
   useEffect(() => {
     fetchKelas();
@@ -50,7 +52,7 @@ export default function DataKelas() {
             email: user.email,
           }))
         );
-      } catch (error) {
+      } catch {
         if (!active) return;
         setWaliKelasOptions([]);
       } finally {
@@ -62,7 +64,7 @@ export default function DataKelas() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [fetchKelas]);
 
   const filteredKelas = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -84,6 +86,19 @@ export default function DataKelas() {
     }, {});
   }, [dataSiswa]);
 
+  const kelasSortAccessors = useMemo(() => ({
+    nama: (kelas) => kelas.nama || '',
+    waliKelas: (kelas) => kelas.waliKelas || '',
+    jumlahSiswa: (kelas) => jumlahSiswaByKelas[kelas.nama] || 0,
+    keterangan: (kelas) => kelas.keterangan || '',
+  }), [jumlahSiswaByKelas]);
+
+  const { sortedData: sortedKelas, sortConfig, requestSort } = useTableSort(
+    filteredKelas,
+    kelasSortAccessors,
+    { key: 'nama', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -93,7 +108,7 @@ export default function DataKelas() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(filteredKelas);
+  } = usePagination(sortedKelas);
 
   const resetForm = () => {
     setFormData(INITIAL_FORM);
@@ -253,15 +268,15 @@ export default function DataKelas() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Kelas</th>
-                <th>Wali Kelas</th>
-                <th>Jumlah Siswa</th>
-                <th>Keterangan</th>
+                <SortableHeader label="Kelas" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Wali Kelas" sortKey="waliKelas" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Jumlah Siswa" sortKey="jumlahSiswa" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Keterangan" sortKey="keterangan" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {filteredKelas.length === 0 ? (
+              {sortedKelas.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="text-center">
                     <div className="empty-state">
@@ -405,4 +420,3 @@ export default function DataKelas() {
     </div>
   );
 }
-

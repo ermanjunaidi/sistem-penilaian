@@ -4,6 +4,8 @@ import { penilaianAPI } from '../../services/api';
 import { Plus, Edit, Trash2, CheckSquare } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function AsesmenFormatif() {
   const { asesmenFormatif, refreshAsesmenFormatif, mataPelajaran, dataSiswa } = useApp();
@@ -107,6 +109,20 @@ export default function AsesmenFormatif() {
     return siswa ? siswa.nama : '-';
   };
 
+  const formatifSortAccessors = {
+    tanggal: (item) => item.tanggal || '',
+    mataPelajaran: (item) => getMapelName(item.mataPelajaranId),
+    siswa: (item) => getSiswaName(item.siswaId),
+    jenis: (item) => item.jenis || '',
+    nilai: (item) => Number(item.nilai) || 0,
+  };
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    asesmenFormatif,
+    formatifSortAccessors,
+    { key: 'tanggal', direction: 'desc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -116,7 +132,7 @@ export default function AsesmenFormatif() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(asesmenFormatif);
+  } = usePagination(sortedData);
 
   return (
     <div>
@@ -144,16 +160,16 @@ export default function AsesmenFormatif() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Tanggal</th>
-                <th>Mata Pelajaran</th>
-                <th>Siswa</th>
-                <th>Jenis</th>
-                <th>Nilai</th>
+                <SortableHeader label="Tanggal" sortKey="tanggal" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Mata Pelajaran" sortKey="mataPelajaran" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Siswa" sortKey="siswa" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Jenis" sortKey="jenis" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nilai" sortKey="nilai" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {asesmenFormatif.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center">
                     <div className="empty-state">

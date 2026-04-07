@@ -3,7 +3,9 @@ import { Plus, Search, Users, Edit, Trash2, X, Download, FileDown, FileUp } from
 import { usersAPI } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import SortableHeader from '../../components/common/SortableHeader';
 
 const INITIAL_FORM = {
   nama: '',
@@ -162,6 +164,20 @@ export default function ManajemenUser() {
     );
   }, [users, searchTerm]);
 
+  const userSortAccessors = useMemo(() => ({
+    nama: (user) => user.nama || '',
+    email: (user) => user.email || '',
+    nip: (user) => user.nip || '',
+    role: (user) => ROLE_LABELS[user.role] || user.role || '',
+    status: (user) => user.status || '',
+  }), []);
+
+  const { sortedData: sortedUsers, sortConfig, requestSort } = useTableSort(
+    filteredUsers,
+    userSortAccessors,
+    { key: 'nama', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -171,7 +187,7 @@ export default function ManajemenUser() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(filteredUsers);
+  } = usePagination(sortedUsers);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -347,11 +363,11 @@ export default function ManajemenUser() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Nama</th>
-                <th>Email</th>
-                <th>NIP</th>
-                <th>Role</th>
-                <th>Status</th>
+                <SortableHeader label="Nama" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Email" sortKey="email" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="NIP" sortKey="nip" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Role" sortKey="role" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Status" sortKey="status" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
@@ -360,7 +376,7 @@ export default function ManajemenUser() {
                 <tr>
                   <td colSpan="7" className="text-center">Memuat data user...</td>
                 </tr>
-              ) : filteredUsers.length === 0 ? (
+              ) : sortedUsers.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center">Belum ada data user.</td>
                 </tr>

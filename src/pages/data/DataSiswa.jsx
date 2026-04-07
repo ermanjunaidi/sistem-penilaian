@@ -5,7 +5,9 @@ import { Plus, Edit, Trash2, Search, UserPlus, FileDown, Upload, FileSpreadsheet
 import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import SortableHeader from '../../components/common/SortableHeader';
 
 const INITIAL_FORM = {
   nis: '',
@@ -71,13 +73,23 @@ export default function DataSiswa() {
           (siswa.nis || '').includes(searchTerm) ||
           (siswa.kelas || '').toLowerCase().includes(keyword)
         );
-      })
-      .sort((a, b) => {
-        const kelasCompare = (a.kelas || '').localeCompare(b.kelas || '', 'id-ID');
-        if (kelasCompare !== 0) return kelasCompare;
-        return (a.nama || '').localeCompare(b.nama || '', 'id-ID');
       });
   }, [dataSiswa, searchTerm, selectedKelas]);
+
+  const siswaSortAccessors = useMemo(() => ({
+    kelas: (siswa) => siswa.kelas || '',
+    nisn: (siswa) => siswa.nisn || '',
+    nama: (siswa) => siswa.nama || '',
+    jenisKelamin: (siswa) => siswa.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan',
+    tanggalLahir: (siswa) => siswa.tanggalLahir || '',
+    namaOrtu: (siswa) => siswa.namaOrtu || '',
+  }), []);
+
+  const { sortedData: sortedSiswa, sortConfig, requestSort } = useTableSort(
+    filteredSiswa,
+    siswaSortAccessors,
+    { key: 'kelas', direction: 'asc' }
+  );
 
   const {
     currentPage,
@@ -88,7 +100,7 @@ export default function DataSiswa() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(filteredSiswa);
+  } = usePagination(sortedSiswa);
 
   const {
     currentPage: importCurrentPage,
@@ -201,7 +213,7 @@ export default function DataSiswa() {
 
     const worksheetData = [headers];
 
-    filteredSiswa.forEach((siswa, index) => {
+    sortedSiswa.forEach((siswa, index) => {
       worksheetData.push([
         siswa.id || '',
         index + 1,
@@ -329,12 +341,6 @@ export default function DataSiswa() {
     reader.readAsArrayBuffer(file);
   };
 
-  const formatDate = (date) => {
-    if (!date) return '';
-    if (date instanceof Date) return date.toISOString().split('T')[0];
-    return date;
-  };
-
   const confirmImport = async () => {
     if (!importFile) {
       window.alert('Pilih file terlebih dahulu');
@@ -434,12 +440,12 @@ export default function DataSiswa() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Kelas</th>
-                <th>NISN</th>
-                <th>Nama Siswa</th>
-                <th>L/P</th>
-                <th>Tanggal Lahir</th>
-                <th>Nama Orang Tua</th>
+                <SortableHeader label="Kelas" sortKey="kelas" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="NISN" sortKey="nisn" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Siswa" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="L/P" sortKey="jenisKelamin" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Tanggal Lahir" sortKey="tanggalLahir" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Orang Tua" sortKey="namaOrtu" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>

@@ -5,7 +5,9 @@ import { Book, Search, FileDown, Plus, Upload, FileSpreadsheet, Edit, Trash2 } f
 import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import SortableHeader from '../../components/common/SortableHeader';
 
 const INITIAL_FORM_DATA = {
   nis: '',
@@ -28,7 +30,7 @@ const INITIAL_FORM_DATA = {
 };
 
 export default function BukuInduk() {
-  const { dataSiswa, refreshDataSiswa, dataKelas } = useApp();
+  const { dataSiswa, refreshDataSiswa, dataKelas, generateId } = useApp();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,6 +57,24 @@ export default function BukuInduk() {
     item.kelas?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const bukuIndukSortAccessors = useMemo(() => ({
+    nisn: (item) => item.nisn || '',
+    nama: (item) => item.nama || '',
+    jenisKelamin: (item) => item.jenisKelamin || '',
+    ttl: (item) => `${item.tempatLahir || ''} ${item.tanggalLahir || ''}`.trim(),
+    agama: (item) => item.agama || '',
+    namaOrtu: (item) => item.namaOrtu || '',
+    alamat: (item) => item.alamat || '',
+    tanggalMasuk: (item) => item.tanggalMasuk || '',
+    status: (item) => item.status || '',
+  }), []);
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    filteredData,
+    bukuIndukSortAccessors,
+    { key: 'nama', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -64,7 +84,7 @@ export default function BukuInduk() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(filteredData);
+  } = usePagination(sortedData);
 
   const handleOpenModal = (item = null) => {
     if (!item && kelasOptions.length === 0) {
@@ -172,7 +192,7 @@ export default function BukuInduk() {
       headers
     ];
 
-    filteredData.forEach((item, index) => {
+    sortedData.forEach((item, index) => {
       worksheetData.push([
         item.id || '',
         index + 1,
@@ -480,15 +500,15 @@ export default function BukuInduk() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>NISN</th>
-                <th>Nama Lengkap</th>
-                <th>L/P</th>
-                <th>TTL</th>
-                <th>Agama</th>
-                <th>Nama Orang Tua</th>
-                <th>Alamat</th>
-                <th>Tgl Masuk</th>
-                <th>Status</th>
+                <SortableHeader label="NISN" sortKey="nisn" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Lengkap" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="L/P" sortKey="jenisKelamin" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="TTL" sortKey="ttl" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Agama" sortKey="agama" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Orang Tua" sortKey="namaOrtu" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Alamat" sortKey="alamat" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Tgl Masuk" sortKey="tanggalMasuk" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Status" sortKey="status" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>

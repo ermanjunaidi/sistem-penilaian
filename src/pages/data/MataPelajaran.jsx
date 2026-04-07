@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, BookOpen, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { mapelAPI, usersAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function MataPelajaran() {
   const { mataPelajaran, refreshMataPelajaran } = useApp();
@@ -135,6 +137,20 @@ export default function MataPelajaran() {
   };
 
   const selectedGuruMissing = formData.guru && !guruOptions.some((guru) => guru.nama === formData.guru);
+
+  const mapelSortAccessors = useMemo(() => ({
+    kode: (item) => item.kode || '',
+    nama: (item) => item.nama || '',
+    kelompok: (item) => item.kelompok || '',
+    jpPerMinggu: (item) => Number(item.jpPerMinggu) || 0,
+    guru: (item) => item.guru || '',
+  }), []);
+
+  const { sortedData: sortedMapel, sortConfig, requestSort } = useTableSort(
+    mataPelajaran,
+    mapelSortAccessors,
+    { key: 'nama', direction: 'asc' }
+  );
 
   // Export functions
   const handleExport = async () => {
@@ -274,7 +290,7 @@ export default function MataPelajaran() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(mataPelajaran);
+  } = usePagination(sortedMapel);
 
   return (
     <div>
@@ -330,16 +346,16 @@ export default function MataPelajaran() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Kode</th>
-                <th>Nama Mata Pelajaran</th>
-                <th>Kelompok</th>
-                <th>JP/Minggu</th>
-                <th>Guru</th>
+                <SortableHeader label="Kode" sortKey="kode" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Mata Pelajaran" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Kelompok" sortKey="kelompok" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="JP/Minggu" sortKey="jpPerMinggu" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Guru" sortKey="guru" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {mataPelajaran.length === 0 ? (
+              {sortedMapel.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center">
                     <div className="empty-state">

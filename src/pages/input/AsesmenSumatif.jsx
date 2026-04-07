@@ -4,6 +4,8 @@ import { penilaianAPI } from '../../services/api';
 import { Plus, Edit, Trash2, ClipboardList } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function AsesmenSumatif() {
   const { asesmenSumatif, refreshAsesmenSumatif, mataPelajaran, dataSiswa } = useApp();
@@ -115,6 +117,21 @@ export default function AsesmenSumatif() {
     return { text: 'Remedial', color: '#ef4444' };
   };
 
+  const sumatifSortAccessors = {
+    tanggal: (item) => item.tanggal || '',
+    mataPelajaran: (item) => getMapelName(item.mataPelajaranId),
+    siswa: (item) => getSiswaName(item.siswaId),
+    jenis: (item) => item.jenis || '',
+    nilai: (item) => Number(item.nilai) || 0,
+    status: (item) => getStatus(item.nilai, item.kkm).text,
+  };
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    asesmenSumatif,
+    sumatifSortAccessors,
+    { key: 'tanggal', direction: 'desc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -124,7 +141,7 @@ export default function AsesmenSumatif() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(asesmenSumatif);
+  } = usePagination(sortedData);
 
   return (
     <div>
@@ -152,17 +169,17 @@ export default function AsesmenSumatif() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Tanggal</th>
-                <th>Mata Pelajaran</th>
-                <th>Siswa</th>
-                <th>Jenis</th>
-                <th>Nilai</th>
-                <th>Status</th>
+                <SortableHeader label="Tanggal" sortKey="tanggal" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Mata Pelajaran" sortKey="mataPelajaran" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Siswa" sortKey="siswa" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Jenis" sortKey="jenis" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nilai" sortKey="nilai" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Status" sortKey="status" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {asesmenSumatif.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="text-center">
                     <div className="empty-state">

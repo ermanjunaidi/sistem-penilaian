@@ -4,6 +4,8 @@ import { mapelAPI } from '../../services/api';
 import { Plus, Edit, Trash2, FileText } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function LingkupMateri() {
   const { lingkupMateri, refreshLingkupMateri, mataPelajaran } = useApp();
@@ -102,6 +104,20 @@ export default function LingkupMateri() {
     return mapel ? mapel.nama : '-';
   };
 
+  const materiSortAccessors = {
+    kode: (item) => item.kode || '',
+    mataPelajaran: (item) => getMapelName(item.mataPelajaranId),
+    namaMateri: (item) => item.namaMateri || '',
+    alokasiWaktu: (item) => Number(item.alokasiWaktu) || 0,
+    semester: (item) => item.semester || '',
+  };
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    lingkupMateri,
+    materiSortAccessors,
+    { key: 'kode', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -111,7 +127,7 @@ export default function LingkupMateri() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(lingkupMateri);
+  } = usePagination(sortedData);
 
   return (
     <div>
@@ -139,16 +155,16 @@ export default function LingkupMateri() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Kode</th>
-                <th>Mata Pelajaran</th>
-                <th>Nama Materi</th>
-                <th>Alokasi Waktu</th>
-                <th>Semester</th>
+                <SortableHeader label="Kode" sortKey="kode" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Mata Pelajaran" sortKey="mataPelajaran" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Materi" sortKey="namaMateri" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Alokasi Waktu" sortKey="alokasiWaktu" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Semester" sortKey="semester" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {lingkupMateri.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center">
                     <div className="empty-state">

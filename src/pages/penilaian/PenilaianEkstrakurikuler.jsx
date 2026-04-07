@@ -3,6 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, Award } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function PenilaianEkstrakurikuler() {
   const { penilaianEkstrakurikuler, setPenilaianEkstrakurikuler, ekstrakurikuler, dataSiswa, generateId } = useApp();
@@ -83,6 +85,21 @@ export default function PenilaianEkstrakurikuler() {
     return predikatMap[nilai] || '-';
   };
 
+  const penilaianSortAccessors = {
+    siswa: (item) => getSiswaName(item.siswaId),
+    ekstrakurikuler: (item) => getEkstraName(item.ekstrakurikulerId),
+    tahunAjaran: (item) => item.tahunAjaran || '',
+    semester: (item) => item.semester || '',
+    nilai: (item) => item.nilai || '',
+    predikat: (item) => item.predikat || '',
+  };
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    penilaianEkstrakurikuler,
+    penilaianSortAccessors,
+    { key: 'siswa', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -92,7 +109,7 @@ export default function PenilaianEkstrakurikuler() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(penilaianEkstrakurikuler);
+  } = usePagination(sortedData);
 
   return (
     <div>
@@ -117,17 +134,17 @@ export default function PenilaianEkstrakurikuler() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Siswa</th>
-                <th>Ekstrakurikuler</th>
-                <th>Tahun Ajaran</th>
-                <th>Semester</th>
-                <th>Nilai</th>
-                <th>Predikat</th>
+                <SortableHeader label="Siswa" sortKey="siswa" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Ekstrakurikuler" sortKey="ekstrakurikuler" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Tahun Ajaran" sortKey="tahunAjaran" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Semester" sortKey="semester" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nilai" sortKey="nilai" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Predikat" sortKey="predikat" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {penilaianEkstrakurikuler.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="text-center">
                     <div className="empty-state">

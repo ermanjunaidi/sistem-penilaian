@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo, useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, Users, Award, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { ekstraAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function Ekstrakurikuler() {
   const { ekstrakurikuler, setEkstrakurikuler } = useApp();
@@ -23,16 +25,16 @@ export default function Ekstrakurikuler() {
     keterangan: ''
   });
 
-  const fetchEkstra = async () => {
+  const fetchEkstra = useCallback(async () => {
     try {
       const res = await ekstraAPI.getAll();
       setEkstrakurikuler(res.data || []);
     } catch (err) { console.error(err); }
-  };
+  }, [setEkstrakurikuler]);
 
   useEffect(() => {
     fetchEkstra();
-  }, []);
+  }, [fetchEkstra]);
 
   const handleOpenModal = (item = null) => {
     if (item) {
@@ -125,6 +127,21 @@ export default function Ekstrakurikuler() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  const ekstraSortAccessors = useMemo(() => ({
+    kode: (item) => item.kode || '',
+    nama: (item) => item.nama || '',
+    jenis: (item) => item.jenis || '',
+    pembina: (item) => item.pembina || '',
+    jadwal: (item) => item.jadwal || '',
+    tempat: (item) => item.tempat || '',
+  }), []);
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    ekstrakurikuler,
+    ekstraSortAccessors,
+    { key: 'nama', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -134,7 +151,7 @@ export default function Ekstrakurikuler() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(ekstrakurikuler);
+  } = usePagination(sortedData);
 
   return (
     <div>
@@ -179,17 +196,17 @@ export default function Ekstrakurikuler() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Kode</th>
-                <th>Nama Ekstrakurikuler</th>
-                <th>Jenis</th>
-                <th>Pembina</th>
-                <th>Jadwal</th>
-                <th>Tempat</th>
+                <SortableHeader label="Kode" sortKey="kode" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Ekstrakurikuler" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Jenis" sortKey="jenis" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Pembina" sortKey="pembina" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Jadwal" sortKey="jadwal" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Tempat" sortKey="tempat" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {ekstrakurikuler.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="8" className="text-center">
                     <div className="empty-state">

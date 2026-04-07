@@ -1,8 +1,11 @@
+import { useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { mapelAPI } from '../../services/api';
 import { Book, Target, FileText, CheckSquare, Edit, Trash2 } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function Intrakurikuler() {
   const {
@@ -13,6 +16,21 @@ export default function Intrakurikuler() {
     asesmenFormatif,
     asesmenSumatif,
   } = useApp();
+
+  const mapelSortAccessors = useMemo(() => ({
+    kode: (item) => item.kode || '',
+    nama: (item) => item.nama || '',
+    kelompok: (item) => item.kelompok || '',
+    jpPerMinggu: (item) => Number(item.jpPerMinggu) || 0,
+    guru: (item) => item.guru || '',
+  }), []);
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    mataPelajaran,
+    mapelSortAccessors,
+    { key: 'nama', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -22,7 +40,7 @@ export default function Intrakurikuler() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(mataPelajaran);
+  } = usePagination(sortedData);
 
   const handleEditMapel = async (mapel) => {
     const namaBaru = window.prompt('Ubah nama mata pelajaran', mapel.nama);
@@ -89,16 +107,16 @@ export default function Intrakurikuler() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Kode</th>
-                <th>Nama Mata Pelajaran</th>
-                <th>Kelompok</th>
-                <th>JP/Minggu</th>
-                <th>Guru</th>
+                <SortableHeader label="Kode" sortKey="kode" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Mata Pelajaran" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Kelompok" sortKey="kelompok" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="JP/Minggu" sortKey="jpPerMinggu" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Guru" sortKey="guru" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {mataPelajaran.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center">
                     <div className="empty-state">

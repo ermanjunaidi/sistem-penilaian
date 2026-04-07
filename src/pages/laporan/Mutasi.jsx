@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { mutasiAPI, hasPermission } from '../../services/api';
 import { Plus, Edit, Trash2, UserPlus, FileText, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function Mutasi() {
   const { mutasi, setMutasi, dataSiswa, refreshDataSiswa } = useApp();
@@ -24,16 +26,16 @@ export default function Mutasi() {
     nomorSurat: ''
   });
 
-  const fetchMutasi = async () => {
+  const fetchMutasi = useCallback(async () => {
     try {
       const res = await mutasiAPI.getAll();
       setMutasi(res.data || []);
     } catch (err) { console.error(err); }
-  };
+  }, [setMutasi]);
 
   useEffect(() => {
     fetchMutasi();
-  }, []);
+  }, [fetchMutasi]);
 
   const handleOpenModal = (item = null) => {
     if (item) {
@@ -139,6 +141,20 @@ export default function Mutasi() {
     return siswa ? `${siswa.nama}${siswa.kelas ? ` (${siswa.kelas})` : ''}` : '-';
   };
 
+  const mutasiSortAccessors = {
+    tanggal: (item) => item.tanggal || '',
+    siswa: (item) => getSiswaName(item.siswaId),
+    jenis: (item) => item.jenis || '',
+    sekolah: (item) => (item.jenis === 'Masuk' ? item.asalSekolah : item.tujuanSekolah) || '',
+    nomorSurat: (item) => item.nomorSurat || '',
+  };
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    mutasi,
+    mutasiSortAccessors,
+    { key: 'tanggal', direction: 'desc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -148,7 +164,7 @@ export default function Mutasi() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(mutasi);
+  } = usePagination(sortedData);
 
   return (
     <div>
@@ -193,16 +209,16 @@ export default function Mutasi() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Tanggal</th>
-                <th>Nama Siswa</th>
-                <th>Jenis</th>
-                <th>{'Asal/Tujuan Sekolah'}</th>
-                <th>Nomor Surat</th>
+                <SortableHeader label="Tanggal" sortKey="tanggal" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nama Siswa" sortKey="siswa" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Jenis" sortKey="jenis" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Asal/Tujuan Sekolah" sortKey="sekolah" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nomor Surat" sortKey="nomorSurat" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {mutasi.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center">
                     <div className="empty-state">
@@ -348,4 +364,3 @@ export default function Mutasi() {
     </div>
   );
 }
-

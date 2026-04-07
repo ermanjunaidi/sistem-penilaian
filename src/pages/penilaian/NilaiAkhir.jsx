@@ -4,6 +4,8 @@ import { penilaianAPI } from '../../services/api';
 import { Calculator, TrendingUp, Edit, Trash2 } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function NilaiAkhir() {
   const { 
@@ -202,6 +204,20 @@ export default function NilaiAkhir() {
       .filter(({ siswaNilai }) => Object.keys(siswaNilai).length > 0);
   }, [calculateNilai, calculatedPreview, dataSiswa, mataPelajaran]);
 
+  const nilaiAkhirSortAccessors = useMemo(() => ({
+    siswa: (item) => item.siswa || '',
+    mataPelajaran: (item) => item.mataPelajaran || '',
+    nilaiAkhir: (item) => Number(item.nilaiAkhir) || 0,
+    predikat: (item) => item.predikat || '',
+    semester: (item) => item.semester || '',
+  }), []);
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    nilaiAkhir,
+    nilaiAkhirSortAccessors,
+    { key: 'siswa', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -211,7 +227,7 @@ export default function NilaiAkhir() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(nilaiAkhir);
+  } = usePagination(sortedData);
 
   return (
     <div>
@@ -366,16 +382,16 @@ export default function NilaiAkhir() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Siswa</th>
-                <th>Mata Pelajaran</th>
-                <th>Nilai Akhir</th>
-                <th>Predikat</th>
-                <th>Semester</th>
+                <SortableHeader label="Siswa" sortKey="siswa" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Mata Pelajaran" sortKey="mataPelajaran" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Nilai Akhir" sortKey="nilaiAkhir" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Predikat" sortKey="predikat" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Semester" sortKey="semester" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {nilaiAkhir.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center">
                     <div className="empty-state">

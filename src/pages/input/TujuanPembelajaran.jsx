@@ -4,6 +4,8 @@ import { mapelAPI } from '../../services/api';
 import { Plus, Edit, Trash2, Target } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
+import useTableSort from '../../hooks/useTableSort';
+import SortableHeader from '../../components/common/SortableHeader';
 
 export default function TujuanPembelajaran() {
   const { tujuanPembelajaran, refreshTujuanPembelajaran, mataPelajaran } = useApp();
@@ -96,6 +98,19 @@ export default function TujuanPembelajaran() {
     return mapel ? mapel.nama : '-';
   };
 
+  const tujuanSortAccessors = {
+    kode: (item) => item.kode || '',
+    mataPelajaran: (item) => getMapelName(item.mataPelajaranId),
+    elemen: (item) => item.elemen || '',
+    deskripsi: (item) => item.deskripsi || '',
+  };
+
+  const { sortedData, sortConfig, requestSort } = useTableSort(
+    tujuanPembelajaran,
+    tujuanSortAccessors,
+    { key: 'kode', direction: 'asc' }
+  );
+
   const {
     currentPage,
     setCurrentPage,
@@ -105,7 +120,7 @@ export default function TujuanPembelajaran() {
     totalPages,
     startIndex,
     paginatedData,
-  } = usePagination(tujuanPembelajaran);
+  } = usePagination(sortedData);
 
   return (
     <div>
@@ -133,15 +148,15 @@ export default function TujuanPembelajaran() {
             <thead>
               <tr>
                 <th>No</th>
-                <th>Kode</th>
-                <th>Mata Pelajaran</th>
-                <th>Elemen</th>
-                <th>Deskripsi</th>
+                <SortableHeader label="Kode" sortKey="kode" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Mata Pelajaran" sortKey="mataPelajaran" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Elemen" sortKey="elemen" sortConfig={sortConfig} onSort={requestSort} />
+                <SortableHeader label="Deskripsi" sortKey="deskripsi" sortConfig={sortConfig} onSort={requestSort} />
                 <th>Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {tujuanPembelajaran.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="text-center">
                     <div className="empty-state">
