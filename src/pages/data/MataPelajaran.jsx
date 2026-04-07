@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Plus, Edit, Trash2, BookOpen, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, Edit, Trash2, BookOpen, Download, Upload } from 'lucide-react';
 import { mapelAPI, usersAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
@@ -170,24 +170,6 @@ export default function MataPelajaran() {
     }
   };
 
-  const handleDownloadTemplate = async (format = 'xlsx') => {
-    try {
-      console.log('Downloading template:', format);
-      const blob = await mapelAPI.downloadTemplate(format);
-      console.log('Blob received:', blob.type, blob.size);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `template_mata_pelajaran.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      setError('Gagal download template: ' + error.message);
-    }
-  };
-
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -315,11 +297,6 @@ export default function MataPelajaran() {
                 label: 'Tambah Mata Pelajaran',
                 icon: <Plus size={18} />,
                 onClick: () => handleOpenModal(),
-              },
-              {
-                label: 'Download Template',
-                icon: <FileSpreadsheet size={18} />,
-                onClick: () => handleDownloadTemplate('xlsx'),
               },
               {
                 label: 'Export Excel',
@@ -479,23 +456,6 @@ export default function MataPelajaran() {
               <button className="btn btn-sm btn-secondary" onClick={handleCloseImportModal}>×</button>
             </div>
             <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Download Template</label>
-                <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
-                  Download template Excel untuk format import
-                </p>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => handleDownloadTemplate('xlsx')}
-                    disabled={isProcessing}
-                  >
-                    <FileSpreadsheet size={16} />
-                    Excel
-                  </button>
-                </div>              </div>
-
               <div className="form-group">
                 <label className="form-label">Upload File</label>
                 <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>

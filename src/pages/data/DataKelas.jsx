@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Plus, Edit, Trash2, School, Search, Users, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, Edit, Trash2, School, Search, Users, Download, Upload } from 'lucide-react';
 import { usersAPI, kelasAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
@@ -198,19 +198,6 @@ export default function DataKelas() {
     } catch (err) { alert(err.message); }
   };
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const blob = await kelasAPI.downloadTemplate();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'template_data_kelas.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (err) { alert(err.message); }
-  };
-
   const handleImport = async () => {
     if (!importFile) return;
     const fd = new FormData();
@@ -233,7 +220,6 @@ export default function DataKelas() {
             label="Tambah Data"
             actions={[
               hasPermission('admin') && { label: 'Tambah Kelas', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
-              { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
               { label: 'Export Excel', icon: <Download size={18} />, onClick: handleExport },
               hasPermission('admin') && { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
             ].filter(Boolean)}

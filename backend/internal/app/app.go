@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -1074,12 +1076,12 @@ func (a *App) saveSiswa(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	args := []any{
-		nullIfEmpty(pickFirst(body, "nis")), nisn, nama, nama,
-		nullIfEmpty(pickFirst(body, "tempatLahir", "tempat_lahir")),
+		nullIfEmpty(pickFirst(body, "nis")), nisn, normalizeWords(nama), normalizeWords(nama),
+		nullIfEmpty(normalizeWords(pickFirst(body, "tempatLahir", "tempat_lahir"))),
 		nullIfEmpty(pickFirst(body, "tanggalLahir", "tanggal_lahir")),
 		coalesceVal(pickFirst(body, "jenisKelamin", "jenis_kelamin"), "L"),
 		nullIfEmpty(pickFirst(body, "agama")),
-		nullIfEmpty(pickFirst(body, "alamat")),
+		nullIfEmpty(normalizeWords(pickFirst(body, "alamat"))),
 		namaOrtuOrDefault(body),
 		namaOrtuOrDefault(body),
 		nullIfEmpty(pickFirst(body, "teleponOrtu", "telepon_orang_tua", "telepon_ortu")),
@@ -1115,7 +1117,25 @@ func (a *App) saveSiswa(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func namaOrtuOrDefault(body map[string]any) any {
-	return nullIfEmpty(pickFirst(body, "namaOrangTua", "namaOrtu", "nama_orang_tua", "nama_ortu"))
+	return nullIfEmpty(normalizeWords(pickFirst(body, "namaOrangTua", "namaOrtu", "nama_orang_tua", "nama_ortu")))
+}
+
+func normalizeWords(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	parts := strings.Fields(strings.ToLower(value))
+	for i, part := range parts {
+		r, size := utf8.DecodeRuneInString(part)
+		if r == utf8.RuneError && size == 0 {
+			continue
+		}
+		parts[i] = string(unicode.ToUpper(r)) + part[size:]
+	}
+
+	return strings.Join(parts, " ")
 }
 
 func (a *App) createSiswa(w http.ResponseWriter, r *http.Request) { a.saveSiswa(w, r, "") }
@@ -1183,7 +1203,7 @@ func (a *App) importSiswa(w http.ResponseWriter, r *http.Request) {
         nis=EXCLUDED.nis, nama=EXCLUDED.nama, nama_lengkap=EXCLUDED.nama_lengkap, jenis_kelamin=EXCLUDED.jenis_kelamin, tempat_lahir=EXCLUDED.tempat_lahir, tanggal_lahir=EXCLUDED.tanggal_lahir,
         agama=EXCLUDED.agama, alamat=EXCLUDED.alamat, nama_ortu=EXCLUDED.nama_ortu, nama_orang_tua=EXCLUDED.nama_orang_tua, telepon_ortu=EXCLUDED.telepon_ortu, telepon_orang_tua=EXCLUDED.telepon_orang_tua,
         tanggal_masuk=EXCLUDED.tanggal_masuk, kelas_id=EXCLUDED.kelas_id, kelas=EXCLUDED.kelas, status=EXCLUDED.status, updated_at=NOW()
-    `, nullIfEmpty(getRowCell(row, idx["nis"])), nisn, nama, nama, coalesceVal(strings.ToUpper(getRowCell(row, idx["jenis_kelamin"])), "L"), nullIfEmpty(getRowCell(row, idx["tempat_lahir"])), nullIfEmpty(getRowCell(row, idx["tanggal_lahir"])), nullIfEmpty(getRowCell(row, idx["agama"])), nullIfEmpty(getRowCell(row, idx["alamat"])), nullIfEmpty(getRowCell(row, idx["nama_ortu"])), nullIfEmpty(getRowCell(row, idx["nama_ortu"])), nullIfEmpty(getRowCell(row, idx["telepon_ortu"])), nullIfEmpty(getRowCell(row, idx["telepon_ortu"])), nullIfEmpty(getRowCell(row, idx["tanggal_masuk"])), nullIfEmpty(kelasID), nullIfEmpty(kelasNama), "Aktif")
+    `, nullIfEmpty(getRowCell(row, idx["nis"])), nisn, normalizeWords(nama), normalizeWords(nama), coalesceVal(strings.ToUpper(getRowCell(row, idx["jenis_kelamin"])), "L"), nullIfEmpty(normalizeWords(getRowCell(row, idx["tempat_lahir"]))), nullIfEmpty(getRowCell(row, idx["tanggal_lahir"])), nullIfEmpty(getRowCell(row, idx["agama"])), nullIfEmpty(normalizeWords(getRowCell(row, idx["alamat"]))), nullIfEmpty(normalizeWords(getRowCell(row, idx["nama_ortu"]))), nullIfEmpty(normalizeWords(getRowCell(row, idx["nama_ortu"]))), nullIfEmpty(getRowCell(row, idx["telepon_ortu"])), nullIfEmpty(getRowCell(row, idx["telepon_ortu"])), nullIfEmpty(getRowCell(row, idx["tanggal_masuk"])), nullIfEmpty(kelasID), nullIfEmpty(kelasNama), "Aktif")
 		if err != nil {
 			errs = append(errs, map[string]any{"nisn": nisn, "nama": nama, "error": err.Error()})
 			continue
@@ -1492,7 +1512,7 @@ func (a *App) bulkSiswa(w http.ResponseWriter, r *http.Request) {
 			errs = append(errs, map[string]any{"nisn": nisn, "nama": m["nama"], "error": "kelas tidak ditemukan"})
 			continue
 		}
-		_, err = a.db.Exec(r.Context(), "INSERT INTO data_siswa (nis,nisn,nama,nama_lengkap,tempat_lahir,tanggal_lahir,jenis_kelamin,agama,alamat,nama_ortu,nama_orang_tua,telepon_ortu,telepon_orang_tua,tanggal_masuk,kelas_id,kelas,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)", nullIfEmpty(m["nis"]), nisn, toStr(m["nama"]), toStr(m["nama"]), nullIfEmpty(m["tempatLahir"]), nullIfEmpty(m["tanggalLahir"]), coalesceVal(toStr(m["jenisKelamin"]), "L"), nullIfEmpty(m["agama"]), nullIfEmpty(m["alamat"]), nullIfEmpty(m["namaOrtu"]), nullIfEmpty(m["namaOrtu"]), nullIfEmpty(m["teleponOrtu"]), nullIfEmpty(m["teleponOrtu"]), nullIfEmpty(m["tanggalMasuk"]), nullIfEmpty(kelasID), nullIfEmpty(kelasNama), coalesceVal(toStr(m["status"]), "Aktif"))
+		_, err = a.db.Exec(r.Context(), "INSERT INTO data_siswa (nis,nisn,nama,nama_lengkap,tempat_lahir,tanggal_lahir,jenis_kelamin,agama,alamat,nama_ortu,nama_orang_tua,telepon_ortu,telepon_orang_tua,tanggal_masuk,kelas_id,kelas,status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)", nullIfEmpty(m["nis"]), nisn, normalizeWords(toStr(m["nama"])), normalizeWords(toStr(m["nama"])), nullIfEmpty(normalizeWords(toStr(m["tempatLahir"]))), nullIfEmpty(m["tanggalLahir"]), coalesceVal(toStr(m["jenisKelamin"]), "L"), nullIfEmpty(m["agama"]), nullIfEmpty(normalizeWords(toStr(m["alamat"]))), nullIfEmpty(normalizeWords(toStr(m["namaOrtu"]))), nullIfEmpty(normalizeWords(toStr(m["namaOrtu"]))), nullIfEmpty(m["teleponOrtu"]), nullIfEmpty(m["teleponOrtu"]), nullIfEmpty(m["tanggalMasuk"]), nullIfEmpty(kelasID), nullIfEmpty(kelasNama), coalesceVal(toStr(m["status"]), "Aktif"))
 		if err != nil {
 			errs = append(errs, map[string]any{"nisn": nisn, "nama": m["nama"], "error": err.Error()})
 			continue

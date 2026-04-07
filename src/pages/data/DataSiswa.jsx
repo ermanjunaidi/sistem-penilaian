@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { siswaAPI, hasPermission } from '../../services/api';
-import { Plus, Edit, Trash2, Search, UserPlus, FileDown, Upload, FileSpreadsheet, School } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, UserPlus, FileDown, Upload, School } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
 import SortableHeader from '../../components/common/SortableHeader';
+import DateInput from '../../components/common/DateInput';
+import { formatTanggalIndonesia } from '../../utils/date';
+import { capitalizeWords } from '../../utils/text';
 
 const INITIAL_FORM = {
   nis: '',
@@ -152,13 +155,13 @@ export default function DataSiswa() {
     const payload = {
       nis: formData.nis.trim(),
       nisn: formData.nisn.trim(),
-      nama: formData.nama.trim(),
-      tempatLahir: formData.tempatLahir.trim(),
+      nama: capitalizeWords(formData.nama),
+      tempatLahir: capitalizeWords(formData.tempatLahir),
       tanggalLahir: formData.tanggalLahir,
       jenisKelamin: formData.jenisKelamin,
       agama: formData.agama.trim(),
-      alamat: formData.alamat.trim(),
-      namaOrtu: formData.namaOrtu.trim(),
+      alamat: capitalizeWords(formData.alamat),
+      namaOrtu: capitalizeWords(formData.namaOrtu),
       teleponOrtu: formData.teleponOrtu.trim(),
       tanggalMasuk: formData.tanggalMasuk,
       kelas: formData.kelas,
@@ -248,36 +251,6 @@ export default function DataSiswa() {
     ];
     XLSX.utils.book_append_sheet(wb, ws, 'Data Siswa');
     XLSX.writeFile(wb, `Data_Siswa_${selectedKelas || 'Semua_Kelas'}_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
-
-  const handleDownloadTemplate = () => {
-    const sampleKelas = kelasOptions[0]?.nama || '7A';
-    const headers = [
-      'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
-      'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua',
-      'Telepon Orang Tua', 'Tanggal Masuk', 'Kelas'
-    ];
-    const exampleData = [
-      ['', '', 'Contoh Siswa 1', 'L', 'Jakarta', '2010-01-15', 'Islam', 'Jl. Contoh No. 1', 'Nama Orang Tua 1', '08123456789', '2024-07-01', sampleKelas],
-      ['', '', 'Contoh Siswa 2', 'P', 'Bandung', '2010-02-20', 'Kristen', 'Jl. Contoh No. 2', 'Nama Orang Tua 2', '08123456780', '2024-07-01', sampleKelas],
-    ];
-    const wsData = [
-      ['TEMPLATE IMPORT DATA SISWA'],
-      ['Kelas harus sudah dibuat di menu Data Kelas'],
-      [],
-      ['Keterangan:'],
-      ['- L/P: Isi dengan L atau P'],
-      ['- Tanggal: gunakan format YYYY-MM-DD'],
-      ['- Kelas: wajib sama dengan nama kelas di menu Data Kelas'],
-      ['- Kolom wajib: NISN, Nama Lengkap, L/P, Nama Orang Tua, Kelas'],
-      [],
-      headers,
-      ...exampleData,
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Data Siswa');
-    XLSX.writeFile(wb, 'Template_Import_Data_Siswa.xlsx');
   };
 
   const handleFileImport = (e) => {
@@ -380,7 +353,6 @@ export default function DataSiswa() {
             disabled={loading || submitting}
             actions={[
               hasPermission('wali_kelas') && { label: 'Tambah Siswa', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
-              { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
               { label: 'Export Excel', icon: <FileDown size={18} />, onClick: handleExport },
               hasPermission('wali_kelas') && { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
             ].filter(Boolean)}
@@ -469,7 +441,7 @@ export default function DataSiswa() {
                     <td data-label="NISN">{siswa.nisn}</td>
                     <td data-label="Nama Siswa"><strong>{siswa.nama}</strong></td>
                     <td data-label="L/P">{siswa.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'}</td>
-                    <td data-label="Tanggal Lahir">{siswa.tanggalLahir || '-'}</td>
+                    <td data-label="Tanggal Lahir">{formatTanggalIndonesia(siswa.tanggalLahir)}</td>
                     <td data-label="Nama Orang Tua">{siswa.namaOrtu}</td>
                     <td data-label="Aksi">
                       <div className="actions">
@@ -536,7 +508,7 @@ export default function DataSiswa() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Tanggal Lahir</label>
-                    <input type="date" name="tanggalLahir" className="form-input" value={formData.tanggalLahir} onChange={handleChange} />
+                    <DateInput name="tanggalLahir" className="form-input" value={formData.tanggalLahir} onChange={handleChange} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Jenis Kelamin</label>
@@ -580,7 +552,7 @@ export default function DataSiswa() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Tanggal Masuk</label>
-                    <input type="date" name="tanggalMasuk" className="form-input" value={formData.tanggalMasuk} onChange={handleChange} />
+                    <DateInput name="tanggalMasuk" className="form-input" value={formData.tanggalMasuk} onChange={handleChange} />
                   </div>
                 </div>
               </div>

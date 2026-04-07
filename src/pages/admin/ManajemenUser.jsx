@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Plus, Search, Users, Edit, Trash2, X, Download, FileDown, FileUp } from 'lucide-react';
+import { Plus, Search, Users, Edit, Trash2, X, FileDown, FileUp } from 'lucide-react';
 import { usersAPI } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
@@ -58,25 +58,6 @@ export default function ManajemenUser() {
     setEditingUser(null);
     setError('');
     setSuccessMessage('');
-  };
-
-  const handleDownloadTemplate = async () => {
-    try {
-      setLoading(true);
-      const blob = await usersAPI.downloadTemplate('xlsx');
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'template_users.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      setError(err.message || 'Gagal mengunduh template.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleExport = async () => {
@@ -299,11 +280,6 @@ export default function ManajemenUser() {
                 label: 'Tambah User',
                 icon: <Plus size={18} />,
                 onClick: openAddModal,
-              },
-              {
-                label: 'Download Template',
-                icon: <Download size={18} />,
-                onClick: handleDownloadTemplate,
               },
               {
                 label: 'Export Data',

@@ -1,13 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { siswaAPI } from '../../services/api';
-import { Book, Search, FileDown, Plus, Upload, FileSpreadsheet, Edit, Trash2 } from 'lucide-react';
+import { Book, Search, FileDown, Plus, Upload, Edit, Trash2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
 import SortableHeader from '../../components/common/SortableHeader';
+import DateInput from '../../components/common/DateInput';
+import { formatTanggalIndonesia } from '../../utils/date';
+import { capitalizeWords } from '../../utils/text';
 
 const INITIAL_FORM_DATA = {
   nis: '',
@@ -32,6 +35,7 @@ const INITIAL_FORM_DATA = {
 export default function BukuInduk() {
   const { dataSiswa, refreshDataSiswa, dataKelas, generateId } = useApp();
   const [showModal, setShowModal] = useState(false);
+  const [selectedDetail, setSelectedDetail] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
@@ -129,6 +133,14 @@ export default function BukuInduk() {
     setFormData(INITIAL_FORM_DATA);
   };
 
+  const handleOpenDetail = (item) => {
+    setSelectedDetail(item);
+  };
+
+  const handleCloseDetail = () => {
+    setSelectedDetail(null);
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     handleSaveBukuInduk();
@@ -143,13 +155,13 @@ export default function BukuInduk() {
     const payload = {
       nis: formData.nis,
       nisn: formData.nisn,
-      nama: formData.nama,
-      tempatLahir: formData.tempatLahir,
+      nama: capitalizeWords(formData.nama),
+      tempatLahir: capitalizeWords(formData.tempatLahir),
       tanggalLahir: formData.tanggalLahir,
       jenisKelamin: formData.jenisKelamin,
       agama: formData.agama,
-      alamat: formData.alamat,
-      namaOrtu: formData.namaOrtu,
+      alamat: capitalizeWords(formData.alamat),
+      namaOrtu: capitalizeWords(formData.namaOrtu),
       teleponOrtu: formData.teleponOrtu,
       tanggalMasuk: formData.tanggalMasuk,
       kelas: formData.kelas,
@@ -226,55 +238,6 @@ export default function BukuInduk() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Buku Induk');
     XLSX.writeFile(wb, `Buku_Induk_${new Date().toISOString().split('T')[0]}.xlsx`);
-  };
-
-  // Download Excel Template
-  const handleDownloadTemplate = () => {
-    const sampleKelas = kelasOptions[0]?.nama || '7A';
-    const headers = [
-      'NIS', 'NISN', 'Nama Lengkap', 'L/P', 'Tempat Lahir',
-      'Tanggal Lahir', 'Agama', 'Alamat', 'Nama Orang Tua',
-      'Telepon Orang Tua', 'Tanggal Masuk', 'Kelas'
-    ];
-
-    const exampleData = [
-      ['', '', 'Contoh Siswa 1', 'L', 'Jakarta', '2010-01-15', 'Islam', 'Jl. Contoh No. 1', 'Nama Orang Tua 1', '08123456789', '2024-07-01', sampleKelas],
-      ['', '', 'Contoh Siswa 2', 'P', 'Bandung', '2010-02-20', 'Kristen', 'Jl. Contoh No. 2', 'Nama Orang Tua 2', '08123456780', '2024-07-01', sampleKelas],
-    ];
-
-    const wsData = [
-      ['TEMPLATE BUKU INDUK SISWA'],
-      ['KURIKULUM MERDEKA'],
-      [],
-      ['Keterangan:'],
-      ['- L/P: Isi dengan L (Laki-laki) atau P (Perempuan)'],
-      ['- Tanggal Lahir & Tanggal Masuk: Format YYYY-MM-DD (contoh: 2010-01-15)'],
-      ['- Agama: Islam, Kristen, Katolik, Hindu, Buddha, atau Konghucu'],
-      ['- Kelas harus sama dengan data di menu Data Kelas'],
-      [],
-      headers,
-      ...exampleData
-    ];
-
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 11 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 11 } },
-      { s: { r: 3, c: 0 }, e: { r: 3, c: 11 } },
-      { s: { r: 4, c: 0 }, e: { r: 4, c: 11 } },
-      { s: { r: 5, c: 0 }, e: { r: 5, c: 11 } },
-      { s: { r: 6, c: 0 }, e: { r: 6, c: 11 } },
-      { s: { r: 7, c: 0 }, e: { r: 7, c: 11 } }
-    ];
-    ws['!cols'] = [
-      { wch: 15 }, { wch: 15 }, { wch: 30 }, { wch: 8 },
-      { wch: 20 }, { wch: 15 }, { wch: 10 }, { wch: 30 },
-      { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 8 }
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Template');
-    XLSX.writeFile(wb, 'Template_Buku_Induk.xlsx');
   };
 
   // Import from Excel
@@ -435,11 +398,6 @@ export default function BukuInduk() {
                 onClick: handleOpenModal,
               },
               {
-                label: 'Download Template',
-                icon: <FileSpreadsheet size={18} />,
-                onClick: handleDownloadTemplate,
-              },
-              {
                 label: 'Export Excel',
                 icon: <FileDown size={18} />,
                 onClick: handleExport,
@@ -527,9 +485,26 @@ export default function BukuInduk() {
                   <tr key={item.id}>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="NISN">{item.nisn}</td>
-                    <td data-label="Nama Lengkap"><strong>{item.nama}</strong></td>
+                    <td data-label="Nama Lengkap">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDetail(item)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          padding: 0,
+                          color: '#2563eb',
+                          cursor: 'pointer',
+                          font: 'inherit',
+                          fontWeight: 700,
+                          textAlign: 'left',
+                        }}
+                      >
+                        {item.nama}
+                      </button>
+                    </td>
                     <td data-label="L/P">{item.jenisKelamin === 'L' ? 'L' : 'P'}</td>
-                    <td data-label="TTL">{item.tempatLahir}, {item.tanggalLahir}</td>
+                    <td data-label="TTL">{item.tempatLahir}, {formatTanggalIndonesia(item.tanggalLahir)}</td>
                     <td data-label="Agama">{item.agama || '-'}</td>
                     <td data-label="Nama Orang Tua">{item.namaOrtu}</td>
                     <td data-label="Alamat" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -623,7 +598,7 @@ export default function BukuInduk() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Tanggal Lahir</label>
-                    <input type="date" name="tanggalLahir" className="form-input" value={formData.tanggalLahir} onChange={handleChange} />
+                    <DateInput name="tanggalLahir" className="form-input" value={formData.tanggalLahir} onChange={handleChange} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Jenis Kelamin</label>
@@ -658,7 +633,7 @@ export default function BukuInduk() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Tanggal Masuk</label>
-                    <input type="date" name="tanggalMasuk" className="form-input" value={formData.tanggalMasuk} onChange={handleChange} />
+                    <DateInput name="tanggalMasuk" className="form-input" value={formData.tanggalMasuk} onChange={handleChange} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Kelas</label>
@@ -689,6 +664,92 @@ export default function BukuInduk() {
                 <button type="submit" className="btn btn-primary" disabled={submitting}>{submitting ? 'Menyimpan...' : editingItem ? 'Update' : 'Simpan'}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {selectedDetail && (
+        <div className="modal-overlay" onClick={handleCloseDetail}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 760 }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Detail Siswa</h3>
+              <button className="btn btn-sm btn-secondary" onClick={handleCloseDetail}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label className="form-label">Nama Lengkap</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.nama || '-'}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">NISN</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.nisn || '-'}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">NIS</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.nis || '-'}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Jenis Kelamin</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>
+                    {selectedDetail.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'}
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tempat Lahir</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.tempatLahir || '-'}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tanggal Lahir</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{formatTanggalIndonesia(selectedDetail.tanggalLahir)}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Agama</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.agama || '-'}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Kelas</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.kelas || '-'}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tanggal Masuk</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{formatTanggalIndonesia(selectedDetail.tanggalMasuk)}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Status</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.status || '-'}</div>
+                </div>
+                <div className="form-group full-width">
+                  <label className="form-label">Nama Orang Tua/Wali</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.namaOrtu || '-'}</div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Telepon Orang Tua</label>
+                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.teleponOrtu || '-'}</div>
+                </div>
+                <div className="form-group full-width">
+                  <label className="form-label">Alamat</label>
+                  <div className="form-textarea" style={{ minHeight: 88 }}>{selectedDetail.alamat || '-'}</div>
+                </div>
+                <div className="form-group full-width">
+                  <label className="form-label">Keterangan</label>
+                  <div className="form-textarea" style={{ minHeight: 88 }}>{selectedDetail.keterangan || '-'}</div>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={handleCloseDetail}>Tutup</button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  handleCloseDetail();
+                  handleOpenModal(selectedDetail);
+                }}
+              >
+                Edit
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -6,6 +6,7 @@ import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
 import SortableHeader from '../../components/common/SortableHeader';
+import DateInput from '../../components/common/DateInput';
 
 export default function AsesmenSumatif() {
   const { asesmenSumatif, refreshAsesmenSumatif, mataPelajaran, dataSiswa } = useApp();
@@ -287,7 +288,7 @@ export default function AsesmenSumatif() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Tanggal</label>
-                    <input type="date" name="tanggal" className="form-input" value={formData.tanggal} onChange={handleChange} />
+                    <DateInput name="tanggal" className="form-input" value={formData.tanggal} onChange={handleChange} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Jenis Asesmen</label>

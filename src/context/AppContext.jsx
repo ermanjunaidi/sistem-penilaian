@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { siswaAPI, mapelAPI, penilaianAPI } from '../services/api';
+import { capitalizeWords } from '../utils/text';
 
 const AppContext = createContext();
 
@@ -399,10 +400,12 @@ function normalizeSiswa(item) {
   if (!item) return item;
   return {
     ...item,
-    tempatLahir: item.tempatLahir ?? item.tempat_lahir ?? '',
+    nama: capitalizeWords(item.nama ?? ''),
+    tempatLahir: capitalizeWords(item.tempatLahir ?? item.tempat_lahir ?? ''),
     tanggalLahir: item.tanggalLahir ?? item.tanggal_lahir ?? '',
     jenisKelamin: item.jenisKelamin ?? item.jenis_kelamin ?? 'L',
-    namaOrtu: item.namaOrtu ?? item.nama_ortu ?? '',
+    alamat: capitalizeWords(item.alamat ?? ''),
+    namaOrtu: capitalizeWords(item.namaOrtu ?? item.nama_ortu ?? ''),
     teleponOrtu: item.teleponOrtu ?? item.telepon_ortu ?? '',
     tanggalMasuk: item.tanggalMasuk ?? item.tanggal_masuk ?? '',
   };

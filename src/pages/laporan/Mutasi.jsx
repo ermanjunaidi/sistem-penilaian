@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { mutasiAPI, hasPermission } from '../../services/api';
-import { Plus, Edit, Trash2, UserPlus, FileText, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, Edit, Trash2, UserPlus, FileText, Download, Upload } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
 import AddDataMenu from '../../components/common/AddDataMenu';
 import SortableHeader from '../../components/common/SortableHeader';
+import DateInput from '../../components/common/DateInput';
 
 export default function Mutasi() {
   const { mutasi, setMutasi, dataSiswa, refreshDataSiswa } = useApp();
@@ -104,19 +105,6 @@ export default function Mutasi() {
     } catch (err) { alert(err.message); }
   };
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const blob = await mutasiAPI.downloadTemplate();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'template_mutasi.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (err) { alert(err.message); }
-  };
-
   const handleImport = async () => {
     if (!importFile) return;
     const fd = new FormData();
@@ -174,7 +162,6 @@ export default function Mutasi() {
           label="Tambah Data"
           actions={[
             hasPermission('admin') && { label: 'Tambah Mutasi', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
-            { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
             { label: 'Export Excel', icon: <Download size={18} />, onClick: handleExport },
             hasPermission('admin') && { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
           ].filter(Boolean)}
@@ -300,7 +287,7 @@ export default function Mutasi() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Tanggal</label>
-                    <input type="date" name="tanggal" className="form-input" value={formData.tanggal} onChange={handleChange} />
+                    <DateInput name="tanggal" className="form-input" value={formData.tanggal} onChange={handleChange} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Nomor Surat</label>

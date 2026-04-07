@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Plus, Edit, Trash2, Users, Award, Download, Upload, FileSpreadsheet } from 'lucide-react';
+import { Plus, Edit, Trash2, Users, Award, Download, Upload } from 'lucide-react';
 import { ekstraAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
@@ -96,19 +96,6 @@ export default function Ekstrakurikuler() {
     } catch (err) { alert(err.message); }
   };
 
-  const handleDownloadTemplate = async () => {
-    try {
-      const blob = await ekstraAPI.downloadTemplate();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'template_ekstrakurikuler.xlsx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (err) { alert(err.message); }
-  };
-
   const handleImport = async () => {
     if (!importFile) return;
     const fd = new FormData();
@@ -161,7 +148,6 @@ export default function Ekstrakurikuler() {
           label="Tambah Data"
           actions={[
             hasPermission('admin') && { label: 'Tambah Ekstra', icon: <Plus size={18} />, onClick: () => handleOpenModal() },
-            { label: 'Download Template', icon: <FileSpreadsheet size={18} />, onClick: handleDownloadTemplate },
             { label: 'Export Excel', icon: <Download size={18} />, onClick: handleExport },
             hasPermission('admin') && { label: 'Import Excel', icon: <Upload size={18} />, onClick: () => setShowImportModal(true) },
           ].filter(Boolean)}
