@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Plus, Edit, Trash2, BookOpen, Download, Upload, FileSpreadsheet } from 'lucide-react';
-import { mapelAPI, hasPermission } from '../../services/api';
+import { mapelAPI, usersAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import AddDataMenu from '../../components/common/AddDataMenu';
 
 export default function MataPelajaran() {
   const { mataPelajaran, refreshMataPelajaran } = useApp();
+  const [guruOptions, setGuruOptions] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -40,18 +41,41 @@ export default function MataPelajaran() {
     load();
   }, [refreshMataPelajaran]);
 
+  useEffect(() => {
+    const loadGuruOptions = async () => {
+      try {
+        const response = await usersAPI.getAll();
+        const userList = Array.isArray(response.data) ? response.data : [];
+        const options = userList
+          .filter((user) => ['guru', 'wali_kelas'].includes(user.role) && user.nama)
+          .sort((a, b) => a.nama.localeCompare(b.nama, 'id'))
+          .map((user) => ({
+            id: user.id,
+            nama: user.nama,
+          }));
+
+        setGuruOptions(options);
+      } catch {
+        setGuruOptions([]);
+      }
+    };
+
+    loadGuruOptions();
+  }, []);
+
   const handleOpenModal = (item = null) => {
     if (item) {
       setEditingItem(item);
       setFormData(item);
     } else {
+      const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
       setEditingItem(null);
       setFormData({
         kode: '',
         nama: '',
         kelompok: 'A',
         jpPerMinggu: '',
-        guru: '',
+        guru: currentUser.nama || '',
         keterangan: ''
       });
     }
@@ -109,6 +133,8 @@ export default function MataPelajaran() {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
+
+  const selectedGuruMissing = formData.guru && !guruOptions.some((guru) => guru.nama === formData.guru);
 
   // Export functions
   const handleExport = async () => {
@@ -402,7 +428,17 @@ export default function MataPelajaran() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">Nama Guru</label>
-                    <input type="text" name="guru" className="form-input" value={formData.guru} onChange={handleChange} />
+                    <select name="guru" className="form-select" value={formData.guru} onChange={handleChange}>
+                      <option value="">Pilih Guru</option>
+                      {selectedGuruMissing && (
+                        <option value={formData.guru}>{formData.guru} (data lama)</option>
+                      )}
+                      {guruOptions.map((guru) => (
+                        <option key={guru.id} value={guru.nama}>
+                          {guru.nama}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="form-group full-width">
                     <label className="form-label">Keterangan</label>
