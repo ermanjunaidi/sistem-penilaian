@@ -4,6 +4,8 @@ import { Plus, Edit, Trash2, Award } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 
 export default function PenilaianEkstrakurikuler() {
@@ -111,6 +113,24 @@ export default function PenilaianEkstrakurikuler() {
     paginatedData,
   } = usePagination(sortedData);
 
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedData);
+
+  const handleBulkDelete = () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.length} penilaian ekstrakurikuler?`)) return;
+
+    setPenilaianEkstrakurikuler((prev) => prev.filter((item) => !selectedIds.includes(item.id)));
+    clearSelection();
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -129,10 +149,29 @@ export default function PenilaianEkstrakurikuler() {
           </h3>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Siswa" sortKey="siswa" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Ekstrakurikuler" sortKey="ekstrakurikuler" sortConfig={sortConfig} onSort={requestSort} />
@@ -146,7 +185,7 @@ export default function PenilaianEkstrakurikuler() {
             <tbody>
               {sortedData.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center">
+                  <td colSpan="9" className="text-center">
                     <div className="empty-state">
                       <Award size={48} className="empty-state-icon" />
                       <p>Belum ada penilaian ekstrakurikuler. Klik "Tambah Penilaian" untuk menambahkan.</p>
@@ -156,6 +195,9 @@ export default function PenilaianEkstrakurikuler() {
               ) : (
                 paginatedData.map((penilaian, index) => (
                   <tr key={penilaian.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(penilaian.id)} onChange={() => toggleItem(penilaian.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Siswa"><strong>{getSiswaName(penilaian.siswaId)}</strong></td>
                     <td data-label="Ekstrakurikuler">{getEkstraName(penilaian.ekstrakurikulerId)}</td>

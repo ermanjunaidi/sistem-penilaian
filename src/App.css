@@ -1015,6 +1015,38 @@ body {
   gap: 8px;
 }
 
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bulk-actions-info {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.table-select-cell {
+  width: 52px;
+  text-align: center !important;
+}
+
+.table-select-cell input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
 /* Stats Grid */
 .stats-grid {
   display: grid;
@@ -1681,6 +1713,10 @@ body {
     text-align: center;
     border-bottom: none;
     padding: 12px 0;
+  }
+
+  .mobile-card-table .table td.table-select-cell > * {
+    text-align: right;
   }
 
   .mobile-card-table .table td[colspan]::before {

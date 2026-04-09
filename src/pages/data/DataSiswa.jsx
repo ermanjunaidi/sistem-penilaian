@@ -6,7 +6,9 @@ import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 import DateInput from '../../components/common/DateInput';
 import { formatTanggalIndonesia } from '../../utils/date';
@@ -106,6 +108,16 @@ export default function DataSiswa() {
   } = usePagination(sortedSiswa);
 
   const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedSiswa);
+
+  const {
     currentPage: importCurrentPage,
     setCurrentPage: setImportCurrentPage,
     itemsPerPage: importItemsPerPage,
@@ -198,6 +210,22 @@ export default function DataSiswa() {
       setSuccessMessage('Data siswa berhasil dihapus.');
     } catch (err) {
       setError(err.message || 'Gagal menghapus data siswa.');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.length} data siswa terpilih?`)) return;
+
+    setError('');
+    setSuccessMessage('');
+    try {
+      await Promise.all(selectedIds.map((id) => siswaAPI.delete(id)));
+      clearSelection();
+      await refreshDataSiswa();
+      setSuccessMessage(`${selectedIds.length} data siswa berhasil dihapus.`);
+    } catch (err) {
+      setError(err.message || 'Gagal menghapus data siswa terpilih.');
     }
   };
 
@@ -407,10 +435,29 @@ export default function DataSiswa() {
           </div>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {hasPermission('wali_kelas') && selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Kelas" sortKey="kelas" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="NISN" sortKey="nisn" sortConfig={sortConfig} onSort={requestSort} />
@@ -423,10 +470,10 @@ export default function DataSiswa() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan="8" className="text-center">Memuat data siswa...</td></tr>
+                <tr><td colSpan="9" className="text-center">Memuat data siswa...</td></tr>
               ) : filteredSiswa.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center">
+                  <td colSpan="9" className="text-center">
                     <div className="empty-state">
                       <UserPlus size={48} className="empty-state-icon" />
                       <p>{kelasOptions.length === 0 ? 'Belum ada data kelas. Tambahkan kelas terlebih dahulu.' : 'Belum ada data siswa pada filter ini.'}</p>
@@ -436,6 +483,9 @@ export default function DataSiswa() {
               ) : (
                 paginatedData.map((siswa, index) => (
                   <tr key={siswa.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(siswa.id)} onChange={() => toggleItem(siswa.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Kelas"><span className="badge badge-primary">{siswa.kelas || '-'}</span></td>
                     <td data-label="NISN">{siswa.nisn}</td>

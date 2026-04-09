@@ -5,7 +5,9 @@ import { usersAPI, kelasAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 
 const INITIAL_FORM = {
@@ -110,6 +112,16 @@ export default function DataKelas() {
     paginatedData,
   } = usePagination(sortedKelas);
 
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedKelas);
+
   const resetForm = () => {
     setFormData(INITIAL_FORM);
     setEditingKelas(null);
@@ -185,6 +197,29 @@ export default function DataKelas() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    const selectedKelas = sortedKelas.filter((kelas) => selectedIds.includes(kelas.id));
+    const blockedKelas = selectedKelas.filter((kelas) => (jumlahSiswaByKelas[kelas.nama] || 0) > 0);
+
+    if (blockedKelas.length > 0) {
+      window.alert(`Kelas berikut masih dipakai siswa: ${blockedKelas.map((kelas) => kelas.nama).join(', ')}`);
+      return;
+    }
+
+    if (!window.confirm(`Hapus ${selectedKelas.length} kelas terpilih?`)) return;
+
+    try {
+      setIsProcessing(true);
+      await Promise.all(selectedKelas.map((kelas) => kelasAPI.delete(kelas.id)));
+      clearSelection();
+      await fetchKelas();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleExport = async () => {
     try {
       const blob = await kelasAPI.export();
@@ -249,10 +284,29 @@ export default function DataKelas() {
           </div>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {hasPermission('admin') && selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={isProcessing}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Kelas" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Wali Kelas" sortKey="waliKelas" sortConfig={sortConfig} onSort={requestSort} />
@@ -264,7 +318,7 @@ export default function DataKelas() {
             <tbody>
               {sortedKelas.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center">
+                  <td colSpan="7" className="text-center">
                     <div className="empty-state">
                       <School size={48} className="empty-state-icon" />
                       <p>Belum ada data kelas. Tambahkan kelas terlebih dahulu sebelum input siswa.</p>
@@ -274,6 +328,9 @@ export default function DataKelas() {
               ) : (
                 paginatedData.map((kelas, index) => (
                   <tr key={kelas.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(kelas.id)} onChange={() => toggleItem(kelas.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Kelas">
                       <span className="badge badge-primary">{kelas.nama}</span>

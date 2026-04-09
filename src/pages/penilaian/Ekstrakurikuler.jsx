@@ -5,7 +5,9 @@ import { ekstraAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 
 export default function Ekstrakurikuler() {
@@ -140,6 +142,32 @@ export default function Ekstrakurikuler() {
     paginatedData,
   } = usePagination(sortedData);
 
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedData);
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.length} ekstrakurikuler?`)) return;
+
+    try {
+      setIsProcessing(true);
+      await Promise.all(selectedIds.map((id) => ekstraAPI.delete(id)));
+      clearSelection();
+      await fetchEkstra();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -177,10 +205,29 @@ export default function Ekstrakurikuler() {
           </h3>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {hasPermission('admin') && selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={isProcessing}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Kode" sortKey="kode" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Nama Ekstrakurikuler" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
@@ -194,7 +241,7 @@ export default function Ekstrakurikuler() {
             <tbody>
               {sortedData.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="text-center">
+                  <td colSpan="9" className="text-center">
                     <div className="empty-state">
                       <Award size={48} className="empty-state-icon" />
                       <p>Belum ada ekstrakurikuler. Klik "Tambah Data" untuk menambahkan.</p>
@@ -204,6 +251,9 @@ export default function Ekstrakurikuler() {
               ) : (
                 paginatedData.map((ekstra, index) => (
                   <tr key={ekstra.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(ekstra.id)} onChange={() => toggleItem(ekstra.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Kode">{ekstra.kode}</td>
                     <td data-label="Nama Ekstrakurikuler"><strong>{ekstra.nama}</strong></td>

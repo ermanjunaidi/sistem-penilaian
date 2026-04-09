@@ -6,7 +6,9 @@ import * as XLSX from 'xlsx';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 import DateInput from '../../components/common/DateInput';
 import { formatTanggalIndonesia } from '../../utils/date';
@@ -89,6 +91,16 @@ export default function BukuInduk() {
     startIndex,
     paginatedData,
   } = usePagination(sortedData);
+
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedData);
 
   const handleOpenModal = (item = null) => {
     if (!item && kelasOptions.length === 0) {
@@ -179,6 +191,22 @@ export default function BukuInduk() {
       handleCloseModal();
     } catch (err) {
       window.alert(err.message || 'Gagal menyimpan buku induk.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Hapus ${selectedIds.length} siswa dari buku induk?`)) return;
+
+    try {
+      setSubmitting(true);
+      await Promise.all(selectedIds.map((id) => siswaAPI.delete(id)));
+      clearSelection();
+      await refreshDataSiswa();
+    } catch (err) {
+      window.alert(err.message || 'Gagal menghapus buku induk.');
     } finally {
       setSubmitting(false);
     }
@@ -453,10 +481,29 @@ export default function BukuInduk() {
           </div>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={submitting}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="NISN" sortKey="nisn" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Nama Lengkap" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
@@ -473,7 +520,7 @@ export default function BukuInduk() {
             <tbody>
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan="11" className="text-center">
+                  <td colSpan="12" className="text-center">
                     <div className="empty-state">
                       <Book size={48} className="empty-state-icon" />
                       <p>Belum ada data dalam buku induk.</p>
@@ -483,6 +530,9 @@ export default function BukuInduk() {
               ) : (
                 paginatedData.map((item, index) => (
                   <tr key={item.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(item.id)} onChange={() => toggleItem(item.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="NISN">{item.nisn}</td>
                     <td data-label="Nama Lengkap">
@@ -676,65 +726,51 @@ export default function BukuInduk() {
               <button className="btn btn-sm btn-secondary" onClick={handleCloseDetail}>×</button>
             </div>
             <div className="modal-body">
-              <div className="form-grid">
-                <div className="form-group">
-                  <label className="form-label">Nama Lengkap</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.nama || '-'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 24 }}>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {[
+                    ['Nama Lengkap', selectedDetail.nama || '-'],
+                    ['NISN', selectedDetail.nisn || '-'],
+                    ['NIS', selectedDetail.nis || '-'],
+                    ['Jenis Kelamin', selectedDetail.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'],
+                    ['Tempat Lahir', selectedDetail.tempatLahir || '-'],
+                    ['Tanggal Lahir', formatTanggalIndonesia(selectedDetail.tanggalLahir)],
+                    ['Agama', selectedDetail.agama || '-'],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ display: 'grid', gridTemplateColumns: '140px 16px 1fr', gap: 8, alignItems: 'start' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>:</span>
+                      <span>{value}</span>
+                    </div>
+                  ))}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">NISN</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.nisn || '-'}</div>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {[
+                    ['Kelas', selectedDetail.kelas || '-'],
+                    ['Tanggal Masuk', formatTanggalIndonesia(selectedDetail.tanggalMasuk)],
+                    ['Status', selectedDetail.status || '-'],
+                    ['Nama Orang Tua/Wali', selectedDetail.namaOrtu || '-'],
+                    ['Telepon Orang Tua', selectedDetail.teleponOrtu || '-'],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ display: 'grid', gridTemplateColumns: '140px 16px 1fr', gap: 8, alignItems: 'start' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>:</span>
+                      <span>{value}</span>
+                    </div>
+                  ))}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">NIS</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.nis || '-'}</div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Jenis Kelamin</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>
-                    {selectedDetail.jenisKelamin === 'L' ? 'Laki-laki' : 'Perempuan'}
+              </div>
+              <div style={{ marginTop: 20, display: 'grid', gap: 12 }}>
+                {[
+                  ['Alamat', selectedDetail.alamat || '-'],
+                  ['Keterangan', selectedDetail.keterangan || '-'],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: 'grid', gridTemplateColumns: '140px 16px 1fr', gap: 8, alignItems: 'start' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{label}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>:</span>
+                    <span style={{ whiteSpace: 'pre-wrap' }}>{value}</span>
                   </div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Tempat Lahir</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.tempatLahir || '-'}</div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Tanggal Lahir</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{formatTanggalIndonesia(selectedDetail.tanggalLahir)}</div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Agama</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.agama || '-'}</div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Kelas</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.kelas || '-'}</div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Tanggal Masuk</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{formatTanggalIndonesia(selectedDetail.tanggalMasuk)}</div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Status</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.status || '-'}</div>
-                </div>
-                <div className="form-group full-width">
-                  <label className="form-label">Nama Orang Tua/Wali</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.namaOrtu || '-'}</div>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Telepon Orang Tua</label>
-                  <div className="form-input" style={{ display: 'flex', alignItems: 'center' }}>{selectedDetail.teleponOrtu || '-'}</div>
-                </div>
-                <div className="form-group full-width">
-                  <label className="form-label">Alamat</label>
-                  <div className="form-textarea" style={{ minHeight: 88 }}>{selectedDetail.alamat || '-'}</div>
-                </div>
-                <div className="form-group full-width">
-                  <label className="form-label">Keterangan</label>
-                  <div className="form-textarea" style={{ minHeight: 88 }}>{selectedDetail.keterangan || '-'}</div>
-                </div>
+                ))}
               </div>
             </div>
             <div className="modal-footer">

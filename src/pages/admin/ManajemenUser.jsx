@@ -4,7 +4,9 @@ import { usersAPI } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 
 const INITIAL_FORM = {
@@ -170,6 +172,16 @@ export default function ManajemenUser() {
     paginatedData,
   } = usePagination(sortedUsers);
 
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedUsers);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -260,6 +272,22 @@ export default function ManajemenUser() {
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Hapus ${selectedIds.length} user terpilih?`)) return;
+
+    setError('');
+    setSuccessMessage('');
+    try {
+      await Promise.all(selectedIds.map((id) => usersAPI.delete(id)));
+      clearSelection();
+      await fetchUsers();
+      setSuccessMessage(`${selectedIds.length} user berhasil dihapus.`);
+    } catch (err) {
+      setError(err.message || 'Gagal menghapus user.');
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -334,10 +362,29 @@ export default function ManajemenUser() {
           </div>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={loading}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Nama" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Email" sortKey="email" sortConfig={sortConfig} onSort={requestSort} />
@@ -350,15 +397,18 @@ export default function ManajemenUser() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="text-center">Memuat data user...</td>
+                  <td colSpan="8" className="text-center">Memuat data user...</td>
                 </tr>
               ) : sortedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">Belum ada data user.</td>
+                  <td colSpan="8" className="text-center">Belum ada data user.</td>
                 </tr>
               ) : (
                 paginatedData.map((user, index) => (
                   <tr key={user.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(user.id)} onChange={() => toggleItem(user.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Nama">{user.nama}</td>
                     <td data-label="Email">{user.email}</td>

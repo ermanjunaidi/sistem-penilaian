@@ -5,6 +5,8 @@ import { Calculator, TrendingUp, Edit, Trash2 } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 
 export default function NilaiAkhir() {
@@ -177,6 +179,20 @@ export default function NilaiAkhir() {
     }
   };
 
+  const handleBulkDeleteNilai = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Hapus ${selectedIds.length} data nilai akhir terpilih?`)) return;
+
+    try {
+      await Promise.all(selectedIds.map((id) => penilaianAPI.deleteNilaiAkhir(id)));
+      clearSelection();
+      await refreshNilaiAkhir();
+      setFeedback({ error: '', success: `${selectedIds.length} nilai akhir berhasil dihapus.` });
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal menghapus nilai akhir.', success: '' });
+    }
+  };
+
   const previewByMapel = useMemo(() => {
     if (!calculatedPreview.length) {
       return calculateNilai;
@@ -228,6 +244,16 @@ export default function NilaiAkhir() {
     startIndex,
     paginatedData,
   } = usePagination(sortedData);
+
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedData);
 
   return (
     <div>
@@ -377,10 +403,28 @@ export default function NilaiAkhir() {
         <div className="card-header">
           <h3 className="card-title">Nilai Akhir Tersimpan</h3>
         </div>
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDeleteNilai}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Siswa" sortKey="siswa" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Mata Pelajaran" sortKey="mataPelajaran" sortConfig={sortConfig} onSort={requestSort} />
@@ -393,7 +437,7 @@ export default function NilaiAkhir() {
             <tbody>
               {sortedData.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">
+                  <td colSpan="8" className="text-center">
                     <div className="empty-state">
                       <p>Belum ada nilai akhir yang disimpan.</p>
                     </div>
@@ -402,6 +446,9 @@ export default function NilaiAkhir() {
               ) : (
                 paginatedData.map((nilai, index) => (
                   <tr key={nilai.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(nilai.id)} onChange={() => toggleItem(nilai.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Siswa"><strong>{nilai.siswa}</strong></td>
                     <td data-label="Mata Pelajaran">{nilai.mataPelajaran}</td>

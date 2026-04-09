@@ -5,7 +5,9 @@ import { mapelAPI, usersAPI, hasPermission } from '../../services/api';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 
 export default function MataPelajaran() {
@@ -274,6 +276,35 @@ export default function MataPelajaran() {
     paginatedData,
   } = usePagination(sortedMapel);
 
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedMapel);
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Hapus ${selectedIds.length} mata pelajaran terpilih?`)) return;
+
+    setIsProcessing(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      await Promise.all(selectedIds.map((id) => mapelAPI.delete(id)));
+      clearSelection();
+      await refreshMataPelajaran();
+      setSuccessMessage(`${selectedIds.length} mata pelajaran berhasil dihapus.`);
+    } catch (err) {
+      setError(err.message || 'Gagal menghapus mata pelajaran terpilih.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div>
       {successMessage && (
@@ -318,10 +349,29 @@ export default function MataPelajaran() {
           <h3 className="card-title">Daftar Mata Pelajaran</h3>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {hasPermission('admin') && selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={isProcessing}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Kode" sortKey="kode" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Nama Mata Pelajaran" sortKey="nama" sortConfig={sortConfig} onSort={requestSort} />
@@ -334,7 +384,7 @@ export default function MataPelajaran() {
             <tbody>
               {sortedMapel.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">
+                  <td colSpan="8" className="text-center">
                     <div className="empty-state">
                       <BookOpen size={48} className="empty-state-icon" />
                       <p>Belum ada mata pelajaran. Klik "Tambah Mata Pelajaran" untuk menambahkan.</p>
@@ -344,6 +394,9 @@ export default function MataPelajaran() {
               ) : (
                 paginatedData.map((mapel, index) => (
                   <tr key={mapel.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(mapel.id)} onChange={() => toggleItem(mapel.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Kode">{mapel.kode}</td>
                     <td data-label="Nama Mata Pelajaran"><strong>{mapel.nama}</strong></td>

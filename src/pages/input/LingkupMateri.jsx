@@ -5,6 +5,8 @@ import { Plus, Edit, Trash2, FileText } from 'lucide-react';
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 
 export default function LingkupMateri() {
@@ -129,6 +131,31 @@ export default function LingkupMateri() {
     paginatedData,
   } = usePagination(sortedData);
 
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedData);
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.length} lingkup materi?`)) return;
+
+    setFeedback({ error: '', success: '' });
+    try {
+      await Promise.all(selectedIds.map((id) => mapelAPI.deleteMateri(id)));
+      clearSelection();
+      await refreshLingkupMateri();
+      setFeedback({ error: '', success: `${selectedIds.length} lingkup materi berhasil dihapus.` });
+    } catch (err) {
+      setFeedback({ error: err.message || 'Gagal menghapus lingkup materi.', success: '' });
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -150,10 +177,29 @@ export default function LingkupMateri() {
           </h3>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Kode" sortKey="kode" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Mata Pelajaran" sortKey="mataPelajaran" sortConfig={sortConfig} onSort={requestSort} />
@@ -166,7 +212,7 @@ export default function LingkupMateri() {
             <tbody>
               {sortedData.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">
+                  <td colSpan="8" className="text-center">
                     <div className="empty-state">
                       <FileText size={48} className="empty-state-icon" />
                       <p>Belum ada lingkup materi. Klik "Tambah Lingkup Materi" untuk menambahkan.</p>
@@ -176,6 +222,9 @@ export default function LingkupMateri() {
               ) : (
                 paginatedData.map((materi, index) => (
                   <tr key={materi.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(materi.id)} onChange={() => toggleItem(materi.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Kode">{materi.kode}</td>
                     <td data-label="Mata Pelajaran"><strong>{getMapelName(materi.mataPelajaranId)}</strong></td>

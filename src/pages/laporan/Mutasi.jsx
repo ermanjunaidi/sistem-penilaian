@@ -5,7 +5,9 @@ import { Plus, Edit, Trash2, UserPlus, FileText, Download, Upload } from 'lucide
 import Pagination from '../../components/common/Pagination';
 import usePagination from '../../hooks/usePagination';
 import useTableSort from '../../hooks/useTableSort';
+import useBulkSelection from '../../hooks/useBulkSelection';
 import AddDataMenu from '../../components/common/AddDataMenu';
+import IndeterminateCheckbox from '../../components/common/IndeterminateCheckbox';
 import SortableHeader from '../../components/common/SortableHeader';
 import DateInput from '../../components/common/DateInput';
 
@@ -154,6 +156,33 @@ export default function Mutasi() {
     paginatedData,
   } = usePagination(sortedData);
 
+  const {
+    selectedIds,
+    selectedCount,
+    isSelected,
+    isAllSelected,
+    toggleItem,
+    toggleAll,
+    clearSelection,
+  } = useBulkSelection(sortedData);
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Apakah Anda yakin ingin menghapus ${selectedIds.length} data mutasi?`)) return;
+
+    try {
+      setIsProcessing(true);
+      await Promise.all(selectedIds.map((id) => mutasiAPI.delete(id)));
+      clearSelection();
+      await fetchMutasi();
+      await refreshDataSiswa();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -191,10 +220,29 @@ export default function Mutasi() {
           </h3>
         </div>
 
+        <div className="table-toolbar">
+          <div className="bulk-actions">
+            <span className="bulk-actions-info">{selectedCount} data dipilih</span>
+            {hasPermission('admin') && selectedCount > 0 && (
+              <button className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={isProcessing}>
+                <Trash2 size={16} />
+                Hapus Terpilih
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="table-container mobile-card-table">
           <table className="table">
             <thead>
               <tr>
+                <th className="table-select-cell">
+                  <IndeterminateCheckbox
+                    checked={isAllSelected()}
+                    indeterminate={selectedCount > 0 && !isAllSelected()}
+                    onChange={() => toggleAll()}
+                  />
+                </th>
                 <th>No</th>
                 <SortableHeader label="Tanggal" sortKey="tanggal" sortConfig={sortConfig} onSort={requestSort} />
                 <SortableHeader label="Nama Siswa" sortKey="siswa" sortConfig={sortConfig} onSort={requestSort} />
@@ -207,7 +255,7 @@ export default function Mutasi() {
             <tbody>
               {sortedData.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="text-center">
+                  <td colSpan="8" className="text-center">
                     <div className="empty-state">
                       <FileText size={48} className="empty-state-icon" />
                       <p>Belum ada data mutasi. Klik "Tambah Data" untuk menambahkan.</p>
@@ -217,6 +265,9 @@ export default function Mutasi() {
               ) : (
                 paginatedData.map((item, index) => (
                   <tr key={item.id}>
+                    <td data-label="Pilih" className="table-select-cell">
+                      <IndeterminateCheckbox checked={isSelected(item.id)} onChange={() => toggleItem(item.id)} />
+                    </td>
                     <td data-label="No">{startIndex + index + 1}</td>
                     <td data-label="Tanggal">{item.tanggal}</td>
                     <td data-label="Nama Siswa"><strong>{getSiswaName(item.siswaId)}</strong></td>
